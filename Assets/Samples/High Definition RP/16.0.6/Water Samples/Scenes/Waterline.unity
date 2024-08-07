@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 4005.061, g: 9804.228, b: 10306.165, a: 1}
+  m_IndirectSpecularColor: {r: 4002.6375, g: 9800.78, b: 10308.156, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -1177,10 +1177,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e2ba958fcdbbb7a49a42cfa0f3a6dd44, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hull: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
+  hull: {fileID: 11400000, guid: cfc45c9e99688384ba4f2a11a763ef39, type: 2}
   waterSurface: {fileID: 833608555}
-  shipMass: 3000000
-  shipLength: 40
+  hullLength: 40
+  hullWidth: 16
+  hullHeight: 9
   shipRoll: 0
 --- !u!4 &1115238713
 Transform:
@@ -1207,7 +1208,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1115238708}
   serializedVersion: 4
-  m_Mass: 3000000
+  m_Mass: 2000000
   m_Drag: 1
   m_AngularDrag: 1
   m_CenterOfMass: {x: 0, y: -0.4, z: 0}
@@ -1836,7 +1837,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1852130368
 Transform:
   m_ObjectHideFlags: 0
@@ -1973,7 +1974,7 @@ PrefabInstance:
     - target: {fileID: 2729552751315872595, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}
       propertyPath: m_LocalPosition.y
-      value: -5.417228
+      value: 0.3203162
       objectReference: {fileID: 0}
     - target: {fileID: 2729552751315872595, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}

@@ -1,0 +1,86 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 670251c45a9955b4ab077c6d1f8dc059, type: 3}
+  m_Name: TestHull 1
+  m_EditorClassIdentifier: 
+  prefabName: TestHull2
+  hullSections:
+  - zPos: -0.45
+    bottomY: -0.5
+    topY: 0.5
+    normalizedSectionLength: 0.1
+    normalizedSectionWidth: 1
+    normalizedSectionHeight: 1
+    hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
+  - zPos: -0.35
+    bottomY: -0.5
+    topY: 0.5
+    normalizedSectionLength: 0.1
+    normalizedSectionWidth: 1
+    normalizedSectionHeight: 1
+    hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
+  - zPos: -0.25
+    bottomY: -0.5
+    topY: 0.5
+    normalizedSectionLength: 0.1
+    normalizedSectionWidth: 1
+    normalizedSectionHeight: 1
+    hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
+  - zPos: -0.15
+    bottomY: -0.5
+    topY: 0.5
+    normalizedSectionLength: 0.1
+    normalizedSectionWidth: 1
+    normalizedSectionHeight: 1
+    hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
+  - zPos: -0.05
+    bottomY: -0.5
+    topY: 0.5
+    normalizedSectionLength: 0.1
+    normalizedSectionWidth: 1
+    normalizedSectionHeight: 1
+    hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
+  - zPos: 0.05
+    bottomY: -0.5
+    topY: 0.5
+    normalizedSectionLength: 0.1
+    normalizedSectionWidth: 1
+    normalizedSectionHeight: 1
+    hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
+  - zPos: 0.15
+    bottomY: -0.5
+    topY: 0.5
+    normalizedSectionLength: 0.1
+    normalizedSectionWidth: 1
+    normalizedSectionHeight: 1
+    hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
+  - zPos: 0.25
+    bottomY: -0.5
+    topY: 0.5
+    normalizedSectionLength: 0.1
+    normalizedSectionWidth: 1
+    normalizedSectionHeight: 1
+    hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
+  - zPos: 0.35
+    bottomY: -0.5
+    topY: 0.5
+    normalizedSectionLength: 0.1
+    normalizedSectionWidth: 1
+    normalizedSectionHeight: 1
+    hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
+  - zPos: 0.45
+    bottomY: -0.5
+    topY: 0.5
+    normalizedSectionLength: 0.1
+    normalizedSectionWidth: 1
+    normalizedSectionHeight: 1
+    hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
