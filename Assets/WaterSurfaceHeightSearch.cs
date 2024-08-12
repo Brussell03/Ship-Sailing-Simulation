@@ -7,7 +7,7 @@ using Unity.VisualScripting.FullSerializer;
 using UnityEngine;
 using UnityEngine.Rendering.HighDefinition;
 
-public class WaterSurfaceHeightSearch : MonoBehaviour
+public class WaterSurfaceHeightSearch
 {
 	// Public parameters
 	//public int resolution = 50;
@@ -84,7 +84,7 @@ public class WaterSurfaceHeightSearch : MonoBehaviour
 		return positionHeights;
 	}
 
-	private void OnDestroy() {
+	public void Destroy() {
 		targetPositionBuffer.Dispose();
 		errorBuffer.Dispose();
 		candidatePositionBuffer.Dispose();
