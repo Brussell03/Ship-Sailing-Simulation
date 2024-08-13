@@ -5,7 +5,11 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 1
+  - enabled: 0
     path: Assets/OutdoorsScene.unity
     guid: 8124e5870f4fd4c779e7a5f994e84ad1
+  - enabled: 1
+    path: Assets/Samples/High Definition RP/16.0.6/Water Samples/Scenes/Waterline.unity
+    guid: 46eb6e71d17de354995552aadf9244a2
   m_configObjects: {}
+  m_UseUCBPForAssetBundles: 0

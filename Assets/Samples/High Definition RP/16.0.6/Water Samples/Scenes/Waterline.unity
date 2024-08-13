@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 4010.0933, g: 9824.763, b: 10337.556, a: 1}
+  m_IndirectSpecularColor: {r: 5629.803, g: 9486.208, b: 14129.08, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -179,7 +179,7 @@ Light:
   m_Enabled: 1
   serializedVersion: 11
   m_Type: 1
-  m_Color: {r: 0.8392157, g: 1, b: 0.8715975, a: 1}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_Intensity: 100000
   m_Range: 10
   m_SpotAngle: 30
@@ -223,7 +223,7 @@ Light:
   m_LightShadowCasterMode: 2
   m_AreaSize: {x: 0.5, y: 0.5}
   m_BounceIntensity: 1
-  m_ColorTemperature: 6570
+  m_ColorTemperature: 6830
   m_UseColorTemperature: 1
   m_BoundingSphereOverride: {x: 0, y: 7.1e-44, z: 2.7105054e-20, w: 1.377593e-39}
   m_UseBoundingSphereOverride: 0
@@ -904,7 +904,7 @@ Rigidbody:
   serializedVersion: 4
   m_Mass: 3000000
   m_Drag: 1
-  m_AngularDrag: 1
+  m_AngularDrag: 2
   m_CenterOfMass: {x: 0, y: -0.4, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -914,7 +914,7 @@ Rigidbody:
   m_ExcludeLayers:
     serializedVersion: 2
     m_Bits: 0
-  m_ImplicitCom: 1
+  m_ImplicitCom: 0
   m_ImplicitTensor: 1
   m_UseGravity: 1
   m_IsKinematic: 0
@@ -1368,6 +1368,7 @@ GameObject:
   - component: {fileID: 729886571}
   - component: {fileID: 729886574}
   - component: {fileID: 729886575}
+  - component: {fileID: 729886576}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -1593,6 +1594,23 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6dac9292e94438546aa9801a7d4cbfd1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &729886576
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 729886570}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 618b0e3f6c65dd247a4a016150006c57, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_LookSpeedController: 120
+  m_LookSpeedMouse: 4
+  m_MoveSpeed: 10
+  m_MoveSpeedIncrement: 2.5
+  m_Turbo: 10
 --- !u!1 &833608554
 GameObject:
   m_ObjectHideFlags: 0
@@ -1634,10 +1652,10 @@ MonoBehaviour:
   timeMultiplier: 1
   scriptInteractions: 1
   cpuEvaluateRipples: 0
-  customMaterial: {fileID: -876546973899608171, guid: dbb44118872d56741a35b554bbb6b4ed,
+  customMaterial: {fileID: -876546973899608171, guid: 47e3ba2d5fc4c2c42951e5348d3f486b,
     type: 3}
-  startSmoothness: 0.95
-  endSmoothness: 0.85
+  startSmoothness: 0.8064516
+  endSmoothness: 0.7064517
   smoothnessFadeStart: 100
   smoothnessFadeDistance: 500
   tessellation: 1
@@ -1646,10 +1664,10 @@ MonoBehaviour:
   tessellationFactorFadeRange: 1850
   refractionColor: {r: 0.010022826, g: 0.21404114, b: 0.21404114, a: 1}
   maxRefractionDistance: 1.5
-  absorptionDistance: 10
-  scatteringColor: {r: 0, g: 0.13286833, b: 0.13286833, a: 1}
-  ambientScattering: 0.2
-  heightScattering: 0.451
+  absorptionDistance: 20
+  scatteringColor: {r: 0, g: 0.21586053, b: 0.16433619, a: 1}
+  ambientScattering: 1
+  heightScattering: 1
   displacementScattering: 0.292
   directLightTipScattering: 0.6
   directLightBodyScattering: 0.5
@@ -1679,7 +1697,7 @@ MonoBehaviour:
   underWaterScatteringColorMode: 0
   underWaterScatteringColor: {r: 0, g: 0.27, b: 0.23, a: 1}
   underWaterRefraction: 1
-  largeCurrentSpeedValue: 20
+  largeCurrentSpeedValue: 0
   largeCurrentMap: {fileID: 0}
   largeCurrentRegionExtent: {x: 100, y: 100}
   largeCurrentRegionOffset: {x: 0, y: 0}
@@ -1689,20 +1707,20 @@ MonoBehaviour:
   ripplesCurrentRegionExtent: {x: 100, y: 100}
   ripplesCurrentRegionOffset: {x: 0, y: 0}
   ripplesCurrentMapInfluence: 1
-  deformation: 0
-  deformationRes: 512
+  deformation: 1
+  deformationRes: 2048
   deformationAreaSize: {x: 200, y: 200}
   deformationAreaOffset: {x: 0, y: 0}
   foam: 1
-  foamResolution: 512
-  foamAreaSize: {x: 200, y: 200}
+  foamResolution: 256
+  foamAreaSize: {x: 256, y: 256}
   foamAreaOffset: {x: 0, y: 0}
   foamPersistenceMultiplier: 0.5
   foamColor: {r: 1, g: 1, b: 1, a: 1}
   foamTextureTiling: 0.15
   foamSmoothness: 1
   simulationFoam: 1
-  simulationFoamAmount: 0.2
+  simulationFoamAmount: 0.791
   simulationFoamMask: {fileID: 0}
   simulationFoamMaskExtent: {x: 100, y: 100}
   simulationFoamMaskOffset: {x: 0, y: 0}
@@ -1748,11 +1766,11 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  repetitionSize: 1671
-  largeOrientationValue: 0
-  largeWindSpeed: 136
-  largeChaos: 0.8
-  largeBand0Multiplier: 0.412
+  repetitionSize: 5000
+  largeOrientationValue: 180
+  largeWindSpeed: 250
+  largeChaos: 0.2
+  largeBand0Multiplier: 0.044
   largeBand0FadeMode: 1
   largeBand0FadeStart: 1500
   largeBand0FadeDistance: 3000
@@ -1764,7 +1782,7 @@ MonoBehaviour:
   ripplesMotionMode: 0
   ripplesOrientationValue: 0
   ripplesWindSpeed: 15
-  ripplesChaos: 0.8
+  ripplesChaos: 0.2
   ripplesFadeMode: 1
   ripplesFadeStart: 50
   ripplesFadeDistance: 200
@@ -1922,7 +1940,7 @@ Rigidbody:
   serializedVersion: 4
   m_Mass: 3000000
   m_Drag: 1
-  m_AngularDrag: 1
+  m_AngularDrag: 2
   m_CenterOfMass: {x: 0, y: -0.4, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -1932,7 +1950,7 @@ Rigidbody:
   m_ExcludeLayers:
     serializedVersion: 2
     m_Bits: 0
-  m_ImplicitCom: 1
+  m_ImplicitCom: 0
   m_ImplicitTensor: 1
   m_UseGravity: 1
   m_IsKinematic: 0
@@ -2003,7 +2021,7 @@ Rigidbody:
   serializedVersion: 4
   m_Mass: 3000000
   m_Drag: 1
-  m_AngularDrag: 1
+  m_AngularDrag: 2
   m_CenterOfMass: {x: 0, y: -0.4, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -2013,7 +2031,7 @@ Rigidbody:
   m_ExcludeLayers:
     serializedVersion: 2
     m_Bits: 0
-  m_ImplicitCom: 1
+  m_ImplicitCom: 0
   m_ImplicitTensor: 1
   m_UseGravity: 1
   m_IsKinematic: 0
@@ -2084,7 +2102,7 @@ Rigidbody:
   serializedVersion: 4
   m_Mass: 3000000
   m_Drag: 1
-  m_AngularDrag: 1
+  m_AngularDrag: 2
   m_CenterOfMass: {x: 0, y: -0.4, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -2094,7 +2112,7 @@ Rigidbody:
   m_ExcludeLayers:
     serializedVersion: 2
     m_Bits: 0
-  m_ImplicitCom: 1
+  m_ImplicitCom: 0
   m_ImplicitTensor: 1
   m_UseGravity: 1
   m_IsKinematic: 0
@@ -2340,7 +2358,7 @@ Rigidbody:
   serializedVersion: 4
   m_Mass: 3000000
   m_Drag: 1
-  m_AngularDrag: 1
+  m_AngularDrag: 2
   m_CenterOfMass: {x: 0, y: -0.4, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -2350,7 +2368,7 @@ Rigidbody:
   m_ExcludeLayers:
     serializedVersion: 2
     m_Bits: 0
-  m_ImplicitCom: 1
+  m_ImplicitCom: 0
   m_ImplicitTensor: 1
   m_UseGravity: 1
   m_IsKinematic: 0
@@ -3308,7 +3326,7 @@ Rigidbody:
   serializedVersion: 4
   m_Mass: 3000000
   m_Drag: 1
-  m_AngularDrag: 1
+  m_AngularDrag: 2
   m_CenterOfMass: {x: 0, y: -0.4, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -3318,7 +3336,7 @@ Rigidbody:
   m_ExcludeLayers:
     serializedVersion: 2
     m_Bits: 0
-  m_ImplicitCom: 1
+  m_ImplicitCom: 0
   m_ImplicitTensor: 1
   m_UseGravity: 1
   m_IsKinematic: 0
@@ -3597,7 +3615,7 @@ Rigidbody:
   serializedVersion: 4
   m_Mass: 3000000
   m_Drag: 1
-  m_AngularDrag: 1
+  m_AngularDrag: 2
   m_CenterOfMass: {x: 0, y: -0.4, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -3607,7 +3625,7 @@ Rigidbody:
   m_ExcludeLayers:
     serializedVersion: 2
     m_Bits: 0
-  m_ImplicitCom: 1
+  m_ImplicitCom: 0
   m_ImplicitTensor: 1
   m_UseGravity: 1
   m_IsKinematic: 0
@@ -3900,6 +3918,21 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 1216996457590927250, guid: e1c2d461478705c4eb663d9e99bde459,
+        type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1216996457590927250, guid: e1c2d461478705c4eb663d9e99bde459,
+        type: 3}
+      propertyPath: resolution
+      value: 100
+      objectReference: {fileID: 0}
+    - target: {fileID: 1216996457590927250, guid: e1c2d461478705c4eb663d9e99bde459,
+        type: 3}
+      propertyPath: waterSurface
+      value: 
+      objectReference: {fileID: 833608555}
     - target: {fileID: 1769139016819857089, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}
       propertyPath: m_Name
@@ -3908,22 +3941,22 @@ PrefabInstance:
     - target: {fileID: 1769139016819857089, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2729552751315872595, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}
       propertyPath: m_LocalPosition.x
-      value: -42.2
+      value: 10.68
       objectReference: {fileID: 0}
     - target: {fileID: 2729552751315872595, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}
       propertyPath: m_LocalPosition.y
-      value: -0.66202813
+      value: 1.039197
       objectReference: {fileID: 0}
     - target: {fileID: 2729552751315872595, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}
       propertyPath: m_LocalPosition.z
-      value: 7.785559
+      value: -24.4
       objectReference: {fileID: 0}
     - target: {fileID: 2729552751315872595, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}
@@ -3959,6 +3992,16 @@ PrefabInstance:
         type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5626092156150903585, guid: e1c2d461478705c4eb663d9e99bde459,
+        type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6924515804512349449, guid: e1c2d461478705c4eb663d9e99bde459,
+        type: 3}
+      propertyPath: m_Enabled
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 6924515804512349449, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}
