@@ -16,27 +16,9 @@ MonoBehaviour:
   enable:
     m_OverrideState: 1
     m_Value: 1
-  minGridSize:
+  triangleSize:
     m_OverrideState: 0
-    m_Value: 75
-  maxGridSize:
-    m_OverrideState: 0
-    m_Value: 2500
-  elevationTransition:
-    m_OverrideState: 0
-    m_Value: 1000
-  numLevelOfDetails:
-    m_OverrideState: 0
-    m_Value: 3
-  maxTessellationFactor:
-    m_OverrideState: 1
-    m_Value: 0
-  tessellationFactorFadeStart:
-    m_OverrideState: 0
-    m_Value: 150
-  tessellationFactorFadeRange:
-    m_OverrideState: 0
-    m_Value: 1850
+    m_Value: 30
   ambientProbeDimmer:
     m_OverrideState: 0
     m_Value: 0.5
@@ -221,10 +203,10 @@ MonoBehaviour:
     m_Value: {x: 0, y: 0}
   bottomAltitude:
     m_OverrideState: 1
-    m_Value: 3000
+    m_Value: 1000
   altitudeRange:
     m_OverrideState: 1
-    m_Value: 1000
+    m_Value: 5000
   fadeInMode:
     m_OverrideState: 0
     m_Value: 0
@@ -252,11 +234,11 @@ MonoBehaviour:
     m_OverrideState: 1
     m_Value: 0
   cloudSimpleMode:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 0
   m_CloudPreset:
     m_OverrideState: 1
-    m_Value: 0
+    m_Value: 3
   cumulusMap:
     m_OverrideState: 0
     m_Value: {fileID: 0}
@@ -300,7 +282,7 @@ MonoBehaviour:
         inWeight: 0
         outWeight: 0
       - serializedVersion: 3
-        time: 0.05
+        time: 0.037
         value: 1
         inSlope: 0
         outSlope: 0
@@ -309,7 +291,7 @@ MonoBehaviour:
         inWeight: 0
         outWeight: 0
       - serializedVersion: 3
-        time: 0.75
+        time: 0.6
         value: 1
         inSlope: 0
         outSlope: 0
@@ -344,8 +326,35 @@ MonoBehaviour:
         inWeight: 0
         outWeight: 0
       - serializedVersion: 3
-        time: 0.1
-        value: 0.9
+        time: 0.05
+        value: 0.8
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.2438
+        value: 0.9498
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.5
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.93
+        value: 0.9268
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -379,8 +388,8 @@ MonoBehaviour:
         inWeight: 0
         outWeight: 0
       - serializedVersion: 3
-        time: 0.25
-        value: 0.5
+        time: 0.1
+        value: 0.4
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -400,7 +409,7 @@ MonoBehaviour:
       m_PostInfinity: 2
       m_RotationOrder: 4
   scatteringTint:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: {r: 0, g: 0, b: 0, a: 1}
   powderEffectIntensity:
     m_OverrideState: 0
@@ -410,10 +419,10 @@ MonoBehaviour:
     m_Value: 0.5
   densityMultiplier:
     m_OverrideState: 1
-    m_Value: 0.4
+    m_Value: 0.35
   shapeFactor:
     m_OverrideState: 1
-    m_Value: 0.95
+    m_Value: 0.85
   shapeScale:
     m_OverrideState: 1
     m_Value: 5
@@ -422,7 +431,7 @@ MonoBehaviour:
     m_Value: {x: 0, y: 0, z: 0}
   erosionFactor:
     m_OverrideState: 1
-    m_Value: 0.8
+    m_Value: 0.75
   erosionScale:
     m_OverrideState: 1
     m_Value: 107
@@ -434,28 +443,28 @@ MonoBehaviour:
     m_Value: 0
   microErosionFactor:
     m_OverrideState: 1
-    m_Value: 0.5
+    m_Value: 0.65
   microErosionScale:
     m_OverrideState: 1
-    m_Value: 200
+    m_Value: 300
   ambientLightProbeDimmer:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 1
   sunLightDimmer:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 1
   erosionOcclusion:
     m_OverrideState: 0
     m_Value: 0.1
   globalWindSpeed:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value:
       mode: 1
       customValue: 100
       additiveValue: 0
       multiplyValue: 1
   orientation:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value:
       mode: 1
       customValue: 0
@@ -653,6 +662,12 @@ MonoBehaviour:
   type:
     m_OverrideState: 0
     m_Value: 1
+  renderingMode:
+    m_OverrideState: 0
+    m_Value: 0
+  material:
+    m_OverrideState: 0
+    m_Value: {fileID: 0}
   sphericalMode:
     m_OverrideState: 0
     m_Value: 1
@@ -681,7 +696,7 @@ MonoBehaviour:
     m_OverrideState: 0
     m_Value: 55261.973
   aerosolDensity:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 0.01192826
   aerosolTint:
     m_OverrideState: 0
@@ -692,9 +707,6 @@ MonoBehaviour:
   aerosolAnisotropy:
     m_OverrideState: 0
     m_Value: 0
-  numberOfBounces:
-    m_OverrideState: 0
-    m_Value: 3
   groundTint:
     m_OverrideState: 1
     m_Value: {r: 0.41948494, g: 0.7502145, b: 0.9528302, a: 1}
@@ -737,6 +749,9 @@ MonoBehaviour:
   horizonZenithShift:
     m_OverrideState: 0
     m_Value: 0
+  numberOfBounces:
+    m_OverrideState: 0
+    m_Value: 3
   m_SkyVersion: 1
   m_ObsoleteEarthPreset:
     m_OverrideState: 0
@@ -761,7 +776,7 @@ MonoBehaviour:
     m_OverrideState: 0
     m_Value: 1
   layers:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 0
   resolution:
     m_OverrideState: 0
@@ -948,11 +963,11 @@ MonoBehaviour:
     m_OverrideState: 1
     m_Value: 1
   windOrientation:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 0
   windSpeed:
-    m_OverrideState: 0
-    m_Value: 0
+    m_OverrideState: 1
+    m_Value: 5
   fogType:
     m_OverrideState: 0
     m_Value: 0
@@ -1055,9 +1070,9 @@ MonoBehaviour:
   m_DenoiserRadius:
     m_OverrideState: 0
     m_Value: 8
-  m_AffectSmoothSurfaces:
+  m_DenoiserAntiFlickeringStrength:
     m_OverrideState: 0
-    m_Value: 0
+    m_Value: 1
   mode:
     m_OverrideState: 0
     m_Value: 2

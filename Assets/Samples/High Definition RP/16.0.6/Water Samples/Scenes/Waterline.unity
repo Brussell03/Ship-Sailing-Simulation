@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 5629.803, g: 9486.208, b: 14129.08, a: 1}
+  m_IndirectSpecularColor: {r: 7117.7354, g: 11762.298, b: 16125.189, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -634,6 +634,50 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &394532428
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 394532430}
+  - component: {fileID: 394532429}
+  m_Layer: 0
+  m_Name: GameManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &394532429
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 394532428}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 13f42fc317f8d0342897e896b1a656d1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!4 &394532430
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 394532428}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &406126700
 GameObject:
   m_ObjectHideFlags: 0
@@ -893,7 +937,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!54 &585863671
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -905,7 +949,7 @@ Rigidbody:
   m_Mass: 3000000
   m_Drag: 1
   m_AngularDrag: 2
-  m_CenterOfMass: {x: 0, y: -0.4, z: 0}
+  m_CenterOfMass: {x: 0, y: 0.4, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
   m_IncludeLayers:
@@ -1720,7 +1764,7 @@ MonoBehaviour:
   foamTextureTiling: 0.15
   foamSmoothness: 1
   simulationFoam: 1
-  simulationFoamAmount: 0.791
+  simulationFoamAmount: 0.8
   simulationFoamMask: {fileID: 0}
   simulationFoamMaskExtent: {x: 100, y: 100}
   simulationFoamMaskOffset: {x: 0, y: 0}
@@ -1767,9 +1811,9 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   repetitionSize: 5000
-  largeOrientationValue: 180
+  largeOrientationValue: 0
   largeWindSpeed: 250
-  largeChaos: 0.2
+  largeChaos: 0.4
   largeBand0Multiplier: 0.044
   largeBand0FadeMode: 1
   largeBand0FadeStart: 1500
@@ -1929,7 +1973,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!54 &885794866
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -1941,7 +1985,7 @@ Rigidbody:
   m_Mass: 3000000
   m_Drag: 1
   m_AngularDrag: 2
-  m_CenterOfMass: {x: 0, y: -0.4, z: 0}
+  m_CenterOfMass: {x: 0, y: 0.4, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
   m_IncludeLayers:
@@ -2010,7 +2054,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!54 &894365652
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -2022,7 +2066,7 @@ Rigidbody:
   m_Mass: 3000000
   m_Drag: 1
   m_AngularDrag: 2
-  m_CenterOfMass: {x: 0, y: -0.4, z: 0}
+  m_CenterOfMass: {x: 0, y: 0.4, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
   m_IncludeLayers:
@@ -2091,7 +2135,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!54 &898570223
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -2103,7 +2147,7 @@ Rigidbody:
   m_Mass: 3000000
   m_Drag: 1
   m_AngularDrag: 2
-  m_CenterOfMass: {x: 0, y: -0.4, z: 0}
+  m_CenterOfMass: {x: 0, y: 0.4, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
   m_IncludeLayers:
@@ -2359,7 +2403,7 @@ Rigidbody:
   m_Mass: 3000000
   m_Drag: 1
   m_AngularDrag: 2
-  m_CenterOfMass: {x: 0, y: -0.4, z: 0}
+  m_CenterOfMass: {x: 0, y: 0.4, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
   m_IncludeLayers:
@@ -3315,7 +3359,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!54 &1635841862
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -3327,7 +3371,7 @@ Rigidbody:
   m_Mass: 3000000
   m_Drag: 1
   m_AngularDrag: 2
-  m_CenterOfMass: {x: 0, y: -0.4, z: 0}
+  m_CenterOfMass: {x: 0, y: 0.4, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
   m_IncludeLayers:
@@ -3604,7 +3648,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!54 &1874010149
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -3616,7 +3660,7 @@ Rigidbody:
   m_Mass: 3000000
   m_Drag: 1
   m_AngularDrag: 2
-  m_CenterOfMass: {x: 0, y: -0.4, z: 0}
+  m_CenterOfMass: {x: 0, y: 0.4, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
   m_IncludeLayers:
@@ -3951,7 +3995,7 @@ PrefabInstance:
     - target: {fileID: 2729552751315872595, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}
       propertyPath: m_LocalPosition.y
-      value: 1.039197
+      value: 1.0538161
       objectReference: {fileID: 0}
     - target: {fileID: 2729552751315872595, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}
@@ -4027,10 +4071,11 @@ SceneRoots:
   - {fileID: 2071822516}
   - {fileID: 1115238713}
   - {fileID: 898570225}
-  - {fileID: 885794868}
   - {fileID: 894365654}
-  - {fileID: 1635841864}
   - {fileID: 585863673}
+  - {fileID: 885794868}
+  - {fileID: 1635841864}
   - {fileID: 1874010151}
   - {fileID: 1328296281}
   - {fileID: 348095428}
+  - {fileID: 394532430}
