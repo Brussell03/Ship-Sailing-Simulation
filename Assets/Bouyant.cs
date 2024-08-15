@@ -33,7 +33,7 @@ public class Bouyant : MonoBehaviour
 				//Debug.Log(searchResult.projectedPositionWS);
 				//Debug.Log(searchResult.error);
 				gameObject.transform.position = searchResult.projectedPositionWS;
-			} else Debug.LogError("Can't Find Projected Position");
+			}// else Debug.LogError("Can't Find Projected Position");
 		}
 	}
 }

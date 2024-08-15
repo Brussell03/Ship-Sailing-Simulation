@@ -9,24 +9,18 @@ using static UnityEngine.Rendering.ProbeTouchupVolume;
 [RequireComponent(typeof(Rigidbody))]
 public class BuoyantHull : MonoBehaviour
 {
-	//public HullSectionShape hull;
 	public HullShape hull;
 	public WaterSurface waterSurface;
 	[SerializeField] private float hullLength = 1f; // m
 	[SerializeField] private float hullWidth = 1f; // m
 	[SerializeField] private float hullHeight = 1f; // m
+	[SerializeField] private float dragCoeff = 0.4f; // Deg
 
-	//[SerializeField] private float shipMass = 10f; // kg
-	//[SerializeField] private float shipLength = 10f; // m
-	[SerializeField] private float shipRoll = 0f; // Deg
-	[SerializeField] private float shipPitch = 0f; // Deg
+	private float shipRoll = 0f; // Deg
+	private float shipPitch = 0f; // Deg
 	private float gravity = -9.81f; // m / s^2
 	private float waterDensity = 1000f; // kg / m^3
-	//private int longitudinalBuoyantForceSplit = 6;
 	private int lateralBuoyantForceSplit = 2;
-	//private int lowestSectionIndex = 0;
-	//private float totalArea = 0f;
-	//private Vector2 submergedCenterOfBuoyancy = Vector2.zero;
 
 	private Rigidbody rb;
 	private WaterSurfaceHeightSearch waterSurfaceHeightSearch;
@@ -48,8 +42,7 @@ public class BuoyantHull : MonoBehaviour
 			hullSection.totalArea = GetTotalArea(hullSection);
 			hullSection.submergedCenterOfBuoyancy = GetSubmergedCenterOfBuoyancy(hullSection);
 		}
-		//totalArea = GetTotalArea();
-		//submergedCenterOfBuoyancy = GetSubmergedCenterOfBuoyancy();
+
 	}
 
 	// Update is called once per frame
@@ -73,15 +66,14 @@ public class BuoyantHull : MonoBehaviour
 			shipPitch = transform.rotation.eulerAngles.x - 360;
 		}
 
-		//float buoyantForce = -waterDensity * gravity * GetSubmergedArea() * shipLength;
-		//float total = 0f;
-
 		float[] sectionWaterLines = new float[hull.hullSections.Count];
 		float[] sectionWaterRollAngles = new float[hull.hullSections.Count];
 		float[] sectionWaterPitchAngles = new float[hull.hullSections.Count];
+		Vector3 currentDirection = Vector3.zero;
+		float currentSpeed = 1f;
 		float overallMinRotatedY = -hullHeight / 2f;
 
-		if(!UpdateWaterValues(out sectionWaterLines, out sectionWaterRollAngles, out sectionWaterPitchAngles, out overallMinRotatedY)) {
+		if(!UpdateWaterValues(out sectionWaterLines, out sectionWaterRollAngles, out sectionWaterPitchAngles, out overallMinRotatedY, out currentDirection)) {
 			return;
 		}
 
@@ -89,14 +81,15 @@ public class BuoyantHull : MonoBehaviour
 		Vector2 largestSubmergedHullSectionCentroid = Vector2.zero;
 		ApplyBuoyancy(sectionWaterLines, sectionWaterRollAngles, sectionWaterPitchAngles, overallMinRotatedY, out largestSubmergedHullSectionArea, out largestSubmergedHullSectionCentroid);
 
-		ApplyWaterDrag(sectionWaterLines, largestSubmergedHullSectionArea, largestSubmergedHullSectionCentroid);
+		ApplyWaterDrag(sectionWaterLines, currentDirection, currentSpeed, largestSubmergedHullSectionArea, largestSubmergedHullSectionCentroid);
 	}
 
-	private bool UpdateWaterValues(out float[] sectionWaterLines, out float[] sectionWaterRollAngles, out float[] sectionWaterPitchAngles, out float overallMinRotatedY) {
+	private bool UpdateWaterValues(out float[] sectionWaterLines, out float[] sectionWaterRollAngles, out float[] sectionWaterPitchAngles, out float overallMinRotatedY, out Vector3 currentDirection) {
 
 		sectionWaterLines = new float[hull.hullSections.Count];
 		sectionWaterRollAngles = new float[hull.hullSections.Count];
 		sectionWaterPitchAngles = new float[hull.hullSections.Count];
+		currentDirection = Vector3.zero;
 		overallMinRotatedY = -hullHeight / 2f;
 
 		Vector3[] waterSamplePositions = new Vector3[hull.hullSections.Count * lateralBuoyantForceSplit];
@@ -107,7 +100,7 @@ public class BuoyantHull : MonoBehaviour
 			}
 		}
 
-		float[] waterHeights = waterSurfaceHeightSearch.GetWaterHeights(waterSamplePositions);
+		float[] waterHeights = waterSurfaceHeightSearch.GetWaterHeights(waterSamplePositions, out currentDirection);
 
 		for (int x = 0; x < hull.hullSections.Count; x++) {
 
@@ -183,6 +176,9 @@ public class BuoyantHull : MonoBehaviour
 		largestSubmergedHullSectionArea = 0f;
 		largestSubmergedHullSectionCentroid = Vector2.zero;
 
+		float translationalForce = 0f;
+		Vector3 translationalForceVector = Vector3.zero;
+
 		for (int x = 0; x < hull.hullSections.Count; x++) {
 
 			Vector2 centerOfBuoyancy = Vector2.zero;
@@ -193,6 +189,7 @@ public class BuoyantHull : MonoBehaviour
 			Vector3 buoyantForcePos = transform.TransformPoint(new Vector3(centerOfBuoyancy.x, centerOfBuoyancy.y, hull.hullSections[x].zPos * hullLength));
 
 			if (sectionBuoyantForce > 0) { // Apply force is section is "displacing" water
+
 				if (sectionFullySubmerged) { // If section is fully submerged, buoyant force is applied vertically
 
 					rb.AddForceAtPosition(Vector3.up * sectionBuoyantForce, buoyantForcePos, ForceMode.Force);
@@ -200,8 +197,17 @@ public class BuoyantHull : MonoBehaviour
 
 				} else { // If section is partially submerged, buoyant force is applied normal to water surface
 
-					rb.AddForceAtPosition(Quaternion.AngleAxis(sectionWaterRollAngles[x], transform.forward) * Quaternion.AngleAxis(sectionWaterPitchAngles[x], -transform.right) * Vector3.up * sectionBuoyantForce, buoyantForcePos, ForceMode.Force);
-					Debug.DrawRay(buoyantForcePos, Quaternion.AngleAxis(sectionWaterRollAngles[x], transform.forward) * Quaternion.AngleAxis(sectionWaterPitchAngles[x], -transform.right) * Vector3.up * sectionBuoyantForce / 1000000, UnityEngine.Color.red, Time.deltaTime * 5);
+					float sectionTranslationalForce = Mathf.Sqrt(Mathf.Pow(Mathf.Sin(sectionWaterRollAngles[x] * Mathf.Deg2Rad) * sectionBuoyantForce, 2) + Mathf.Pow(Mathf.Sin(sectionWaterPitchAngles[x] * Mathf.Deg2Rad) * sectionBuoyantForce, 2));
+					Vector3 sectionTranslationalForceVector = new Vector3(Mathf.Sin(sectionWaterRollAngles[x] * Mathf.Deg2Rad), 0, Mathf.Sin(sectionWaterPitchAngles[x] * Mathf.Deg2Rad)).normalized;
+
+					translationalForce += sectionTranslationalForce;
+					translationalForceVector += sectionTranslationalForceVector * sectionTranslationalForce;
+
+					//rb.AddForceAtPosition(Quaternion.AngleAxis(sectionWaterRollAngles[x], transform.forward) * Quaternion.AngleAxis(sectionWaterPitchAngles[x], -transform.right) * Vector3.up * sectionBuoyantForce, buoyantForcePos, ForceMode.Force);
+					//Debug.DrawRay(buoyantForcePos, Quaternion.AngleAxis(sectionWaterRollAngles[x], transform.forward) * Quaternion.AngleAxis(sectionWaterPitchAngles[x], -transform.right) * Vector3.up * sectionBuoyantForce / 1000000, UnityEngine.Color.red, Time.deltaTime * 5);
+
+					rb.AddForceAtPosition(Vector3.up * sectionBuoyantForce + sectionTranslationalForceVector * sectionTranslationalForce, buoyantForcePos, ForceMode.Force);
+					Debug.DrawRay(buoyantForcePos, (Vector3.up * sectionBuoyantForce + sectionTranslationalForceVector * sectionTranslationalForce) / 1000000, UnityEngine.Color.red, Time.deltaTime * 5);
 
 				}
 
@@ -210,6 +216,13 @@ public class BuoyantHull : MonoBehaviour
 				Debug.DrawRay(buoyantForcePos, Vector3.up * 5, UnityEngine.Color.blue, Time.deltaTime * 10);
 			}
 
+			if (translationalForce != 0) {
+				translationalForceVector /= translationalForce;
+
+				rb.AddForceAtPosition(translationalForceVector * translationalForce * -2f, transform.position + rb.centerOfMass, ForceMode.Force);
+			}
+
+
 			if (submergedAreas[x] > largestSubmergedHullSectionArea) {
 				largestSubmergedHullSectionArea = submergedAreas[x];
 				largestSubmergedHullSectionCentroid = centerOfBuoyancy;
@@ -217,7 +230,7 @@ public class BuoyantHull : MonoBehaviour
 		}
 	}
 
-	private void ApplyWaterDrag(float[] sectionWaterLines, float largestSubmergedHullSectionArea, Vector2 largestSubmergedHullSectionCentroid) {
+	private void ApplyWaterDrag(float[] sectionWaterLines, Vector3 currentDirection, float currentSpeed, float largestSubmergedHullSectionArea, Vector2 largestSubmergedHullSectionCentroid) {
 
 		bool allAboveWater = true; // Checking if any hull section is in the water
 		for (int i = 0; i < sectionWaterLines.Length; i++) {
@@ -235,11 +248,10 @@ public class BuoyantHull : MonoBehaviour
 		List<Vector2> sideOutline = new List<Vector2>();
 		int numInWater = 0;
 		for (int i = 0; i < hull.hullSections.Count; i++) {
-			//sideOutline[i] = new Vector2(hull.hullSections[i].zPos * hullLength, hull.hullSections[i].bottomY * hullHeight);
-			//sideOutline[sideOutline.Length * 2 - 1 - i] = new Vector2(hull.hullSections[i].zPos * hullLength, hull.hullSections[i].topY * hullHeight);
+
 			float sectionWaterLineCentered = sectionWaterLines[i] - hullHeight / 2f;
 			if (hull.hullSections[i].bottomY * hullHeight < sectionWaterLineCentered) { // Section is in the water
-				//print(i);
+
 				sideOutline.Insert(numInWater, new Vector2(hull.hullSections[i].zPos * hullLength, hull.hullSections[i].bottomY * hullHeight));
 				if (hull.hullSections[i].topY * hullHeight <= sectionWaterLineCentered) { // Section is fully submerged
 
@@ -253,10 +265,31 @@ public class BuoyantHull : MonoBehaviour
 			}
 		}
 
-		//Vector2[] rotatedSideOutline = GetRotatedHullPoints(sideOutline, shipPitch);
-		float sideArea = GetPolygonArea(sideOutline.ToArray());
-		Vector2 sideCentroid = GetPolygonCentroid(sideOutline.ToArray(), sideArea);
+		float minY = hullHeight / 2f;
+		float minX = hullLength / 2f;
+		for (int i = 0; i < sideOutline.Count; i++) {
+			if (sideOutline[i].y < minY) {
+				minY = sideOutline[i].y;
+			}
+			if (sideOutline[i].x < minX) {
+				minX = sideOutline[i].x;
+			}
+		}
 
+		for (int i = 0; i < sideOutline.Count; i++) {
+			sideOutline[i] -= new Vector2(minX, minY);
+		}
+
+		float sideArea = GetPolygonArea(sideOutline.ToArray());
+		Vector2 sideCentroid;
+
+		if (sideArea == 0) {
+			sideCentroid = Vector2.zero;
+		} else {
+			sideCentroid = GetPolygonCentroid(sideOutline.ToArray(), sideArea);
+		}
+
+		sideCentroid += new Vector2(minX, minY);
 
 
 		//List<Vector2> forwardRightHullPoints = GetRotatedHullPoints(GetUnnormalizedHullPoints(hull.hullSections[lowestSectionIndex]), waterAngleWithRoll).ToList();
@@ -310,15 +343,30 @@ public class BuoyantHull : MonoBehaviour
 
 		//print(waterSurface.largeOrientationValue);
 		//print(transform.rotation.eulerAngles.y);
-		float relativeCurrentBearing = -transform.rotation.eulerAngles.y - waterSurface.largeOrientationValue + 90f; // Default current direction is in the x-axis, redefines so that bearing points in direction of water relative to ship bearing
+		float currentAngle = Vector3.SignedAngle(Vector3.right, currentDirection, Vector3.down);
+		float relativeCurrentBearing = -transform.rotation.eulerAngles.y - currentAngle + 90f; // Default current direction is in the x-axis, redefines so that bearing points in direction of water relative to ship bearing
 		if (relativeCurrentBearing > 360) {
 			relativeCurrentBearing -= 360;
 		} else if (relativeCurrentBearing < 0) {
 			relativeCurrentBearing += 360;
 		}
-		print(relativeCurrentBearing);
 
+		//Debug.Log(currentAngle);
+		//Debug.Log(relativeCurrentBearing);
 
+		float dragArea = Mathf.Cos(relativeCurrentBearing * Mathf.Deg2Rad) * largestSubmergedHullSectionArea + Mathf.Sin(relativeCurrentBearing * Mathf.Deg2Rad) * sideArea;
+
+		//float xPos = Mathf.Cos(relativeCurrentBearing * Mathf.Deg2Rad) * largestSubmergedHullSectionCentroid.x + Mathf.Sin(relativeCurrentBearing * Mathf.Deg2Rad) * -hullWidth / 2f;
+		//float yPos = Mathf.Cos(relativeCurrentBearing * Mathf.Deg2Rad) * largestSubmergedHullSectionCentroid.y + Mathf.Sin(relativeCurrentBearing * Mathf.Deg2Rad) * sideCentroid.y;
+		//float zPos = Mathf.Cos(relativeCurrentBearing * Mathf.Deg2Rad) * -hullLength / 2f + Mathf.Sin(relativeCurrentBearing * Mathf.Deg2Rad) * sideCentroid.x;
+
+		Vector3 dragCentroid = transform.TransformPoint(new Vector3(Mathf.Cos(relativeCurrentBearing * Mathf.Deg2Rad) * largestSubmergedHullSectionCentroid.x + Mathf.Sin(relativeCurrentBearing * Mathf.Deg2Rad) * -hullWidth / 2f, Mathf.Cos(relativeCurrentBearing * Mathf.Deg2Rad) * largestSubmergedHullSectionCentroid.y + Mathf.Sin(relativeCurrentBearing * Mathf.Deg2Rad) * sideCentroid.y, Mathf.Cos(relativeCurrentBearing * Mathf.Deg2Rad) * -hullLength / 2f + Mathf.Sin(relativeCurrentBearing * Mathf.Deg2Rad) * sideCentroid.x));
+		//Debug.DrawRay(dragCentroid, transform.position - dragCentroid, UnityEngine.Color.yellow, 2);
+
+		float dragForce = 0.5f * waterDensity * currentSpeed * currentSpeed * dragCoeff * dragArea;
+
+		rb.AddForceAtPosition(dragForce * currentDirection, dragCentroid, ForceMode.Force);
+		Debug.DrawRay(dragCentroid, currentDirection * dragForce / 5000, UnityEngine.Color.yellow, 2);
 	}
 
 	/*private float CalculateFlatWaterline() {
@@ -635,9 +683,7 @@ public class BuoyantHull : MonoBehaviour
 		Vector2[] rightHullPoints = GetRotatedHullPoints(GetUnnormalizedHullPoints(hullSection), waterlineAngleWithRoll);
 		Vector2[] leftHullPoints = GetRotatedHullPoints(GetLeftHullPoints(GetUnnormalizedHullPoints(hullSection)), waterlineAngleWithRoll);
 
-		// Find lowest y-position and its index
-		//float minY = hull.hullPoints[0].y;
-		//float maxY = hull.hullPoints[hull.hullPoints.Count - 1].y;
+		// Find lowest and highest y-position and their indices
 		float localMinY = hullSection.topY * hullHeight;
 		float localMaxY = hullSection.bottomY * hullHeight;
 
@@ -721,10 +767,8 @@ public class BuoyantHull : MonoBehaviour
 			}
 		}
 
-		//PrintList(newRightHullPoints);
-		//PrintList(newLeftHullPoints);
-
 		// Add deck point
+
 		bool crossesY = false;
 		Vector2 deckPoint = new Vector2(0, newLeftHullPoints[newLeftHullPoints.Count - 1].y + ((newRightHullPoints[newRightHullPoints.Count - 1].y - newLeftHullPoints[newLeftHullPoints.Count - 1].y) / (newRightHullPoints[newRightHullPoints.Count - 1].x + newLeftHullPoints[newLeftHullPoints.Count - 1].x) * newLeftHullPoints[newLeftHullPoints.Count - 1].x));
 
@@ -751,8 +795,6 @@ public class BuoyantHull : MonoBehaviour
 
 			newRightHullPoints.Add(deckPoint);
 		}
-		//PrintList(newRightHullPoints);
-		//PrintList(newLeftHullPoints);
 
 		// Interpolate points for equal step intervals
 
@@ -777,8 +819,6 @@ public class BuoyantHull : MonoBehaviour
 				}
 			}
 		}
-		//PrintList(newRightHullPoints);
-		//PrintList(newLeftHullPoints);
 
 		// Adjust points for deckline
 		List<Vector2> originalNewHullPoints = new List<Vector2>();
@@ -805,18 +845,13 @@ public class BuoyantHull : MonoBehaviour
 		int pointsToTop = newLeftHullPoints.Count;
 		if (newRightHullPoints.Count < pointsToTop) { pointsToTop = newRightHullPoints.Count; }
 
-		//PrintList(newRightHullPoints);
-		//PrintList(newLeftHullPoints);
-
 		// Iteratively add section areas to find waterline
 
 		for (int i = 0; i < pointsToTop - 1; i++) {
 
 			if (newRightHullPoints[i + 1].y > waterline) {
 				// Calculate remaining area
-				//Debug.Log(centerOfBuoyancy + pivotOffset);
-				//Debug.Log(centerOfBuoyancy / area + pivotOffset);
-				//Debug.Log(GetUnrotatedPoint(centerOfBuoyancy / area + pivotOffset, waterlineAngle));
+
 				float xRight = 0f;
 				float xLeft = 0f;
 
@@ -844,12 +879,11 @@ public class BuoyantHull : MonoBehaviour
 
 				area += remainingAreaLeft + remainingAreaRight;
 
-				//Debug.Log(GetUnrotatedPoint((centerOfBuoyancy + pivotOffset) / area, waterlineAngle));
 				centerOfBuoyancy = GetUnrotatedPoint(centerOfBuoyancy / area + pivotOffset, waterlineAngleWithRoll);
 				return area;
 
 			} else if (newRightHullPoints[i].y == waterline) {
-				//print(newRightHullPoints[i].y);
+
 				centerOfBuoyancy = GetUnrotatedPoint(centerOfBuoyancy / area + pivotOffset, waterlineAngleWithRoll);
 				return area;
 			} else {
@@ -887,29 +921,14 @@ public class BuoyantHull : MonoBehaviour
 				}
 
 				area += sectionAreaLeft + sectionAreaRight;
-				//print(sectionAreaCenterRight);
-				//print(sectionAreaCenterLeft);
-				//print(sectionAreaRight);
-				//print(sectionAreaLeft);
 				centerOfBuoyancy += sectionAreaCenterRight * sectionAreaRight + sectionAreaCenterLeft * sectionAreaLeft;
-				//print(sectionAreaCenterRight * sectionAreaRight + sectionAreaCenterLeft * sectionAreaLeft);
-				/*Vector3 buoyantForcePos = transform.TransformPoint(new Vector3(GetUnrotatedPoint(sectionAreaCenterRight + pivotOffset, waterlineAngle).x / transform.localScale.x, GetUnrotatedPoint(sectionAreaCenterRight + pivotOffset, waterlineAngle).y / transform.localScale.y - 0.5f, (1f / longitudinalBuoyantForceSplit * 0 + 1f / (longitudinalBuoyantForceSplit * 2)) - 0.5f));
-				Debug.DrawRay(buoyantForcePos, Vector3.up * 0.1f, UnityEngine.Color.blue, Time.deltaTime * 1);
 
-				buoyantForcePos = transform.TransformPoint(new Vector3(GetUnrotatedPoint(sectionAreaCenterLeft + pivotOffset, waterlineAngle).x / transform.localScale.x, GetUnrotatedPoint(sectionAreaCenterLeft + pivotOffset, waterlineAngle).y / transform.localScale.y - 0.5f, (1f / longitudinalBuoyantForceSplit * 0 + 1f / (longitudinalBuoyantForceSplit * 2)) - 0.5f));
-				Debug.DrawRay(buoyantForcePos, Vector3.up * 0.1f, UnityEngine.Color.blue, Time.deltaTime * 1);*/
-
-				//Debug.Log(sectionAreaCenterRight);
-				//Debug.Log(sectionAreaCenterLeft);
-
-				//centerOfBuoyancy += sectionAreaCenterLeft * sectionAreaLeft;
 			}
 		}
 
 		// One side is now submerged
 
 		if (waterlineAngleWithRoll > 0) { // CCW
-			//Debug.Log("CCW");
 			for (int i = pointsToTop - 1; i < newRightHullPoints.Count - 1; i++) {
 
 				if (newRightHullPoints[i + 1].y > waterline) {
@@ -926,13 +945,6 @@ public class BuoyantHull : MonoBehaviour
 
 					float xRight = originalNewHullPoints[i - (pointsToTop - 1)].x + (waterline - newRightHullPoints[i].y) * (originalNewHullPoints[(i + 1) - (pointsToTop - 1)].x - originalNewHullPoints[i - (pointsToTop - 1)].x) / (newRightHullPoints[i + 1].y - newRightHullPoints[i].y);
 					float xLeft = aboveHalfDeckPoints[i - (pointsToTop - 1)] + (waterline - newRightHullPoints[i].y) * (aboveHalfDeckPoints[(i + 1) - (pointsToTop - 1)] - aboveHalfDeckPoints[i - (pointsToTop - 1)]) / (newRightHullPoints[i + 1].y - newRightHullPoints[i].y);
-					
-					/*Debug.Log(xRight);
-					Debug.Log(xLeft);
-					print(waterline);
-					print(newRightHullPoints[i].y);
-					print(aboveHalfDeckPoints[i - (pointsToTop - 1)]);
-					print(originalNewHullPoints[i - (pointsToTop - 1)].x);*/
 
 					xPos += (aboveHalfDeckPoints[i - (pointsToTop - 1)] + originalNewHullPoints[i - (pointsToTop - 1)].x) * (aboveHalfDeckPoints[i - (pointsToTop - 1)] * newRightHullPoints[i].y - originalNewHullPoints[i - (pointsToTop - 1)].x * newRightHullPoints[i].y);
 					xPos += (originalNewHullPoints[i - (pointsToTop - 1)].x + xRight) * (originalNewHullPoints[i - (pointsToTop - 1)].x * waterline - xRight * newRightHullPoints[i].y);
@@ -945,18 +957,11 @@ public class BuoyantHull : MonoBehaviour
 					yPos += (waterline + waterline) * (xRight * waterline - xLeft * waterline);
 					yPos += (waterline + newRightHullPoints[i].y) * (xLeft * newRightHullPoints[i].y - aboveHalfDeckPoints[i - (pointsToTop - 1)] * waterline);
 					yPos = yPos / (6 * remainingArea) + newRightHullPoints[i].y;
-					//Debug.Log(new Vector2(xPos, yPos));
-					//Debug.Log(centerOfBuoyancy);
-					//print(new Vector2(xPos, yPos) * remainingArea);
+					
 					centerOfBuoyancy += new Vector2(xPos, yPos) * remainingArea;
-					//Debug.Log(centerOfBuoyancy);
 
 					area += remainingArea;
 
-					//centerOfBuoyancy += sectionAreaCenter * remainingArea;
-					//print(centerOfBuoyancy / area + pivotOffset);
-					//print(area);
-					//print(pivotOffset);
 					centerOfBuoyancy = GetUnrotatedPoint(centerOfBuoyancy / area + pivotOffset, waterlineAngleWithRoll);
 					return area;
 
@@ -983,20 +988,12 @@ public class BuoyantHull : MonoBehaviour
 					yPos += (newRightHullPoints[i + 1].y + newRightHullPoints[i].y) * (aboveHalfDeckPoints[(i + 1) - (pointsToTop - 1)] * newRightHullPoints[i].y - aboveHalfDeckPoints[i - (pointsToTop - 1)] * newRightHullPoints[i + 1].y);
 					yPos = yPos / (6 * sectionArea) + newRightHullPoints[i].y;
 
-					/*Debug.Log(xPos);
-					Debug.Log(yPos);
-					print(waterline);
-					print(newRightHullPoints[i].y);
-					print(aboveHalfDeckPoints[i - (pointsToTop - 1)]);
-					print(originalNewHullPoints[i - (pointsToTop - 1)].x);*/
-
 					centerOfBuoyancy += new Vector2(xPos, yPos) * sectionArea;
 
 					area += sectionArea;
 				}
 			}
 		} else if (waterlineAngleWithRoll < 0) { // CW
-			//Debug.Log("CW");
 			for (int i = pointsToTop - 1; i < newLeftHullPoints.Count - 1; i++) {
 
 				if (newLeftHullPoints[i + 1].y > waterline) {
@@ -1014,13 +1011,6 @@ public class BuoyantHull : MonoBehaviour
 					float xRight = originalNewHullPoints[i - (pointsToTop - 1)].x + (waterline - newLeftHullPoints[i].y) * (originalNewHullPoints[(i + 1) - (pointsToTop - 1)].x - originalNewHullPoints[i - (pointsToTop - 1)].x) / (newLeftHullPoints[i + 1].y - newLeftHullPoints[i].y);
 					float xLeft = aboveHalfDeckPoints[i - (pointsToTop - 1)] + (waterline - newLeftHullPoints[i].y) * (aboveHalfDeckPoints[(i + 1) - (pointsToTop - 1)] - aboveHalfDeckPoints[i - (pointsToTop - 1)]) / (newLeftHullPoints[i + 1].y - newLeftHullPoints[i].y);
 
-					/*Debug.Log(xRight);
-					Debug.Log(xLeft);
-					print(waterline);
-					print(newLeftHullPoints[i].y);
-					print(aboveHalfDeckPoints[i - (pointsToTop - 1)]);
-					print(originalNewHullPoints[i - (pointsToTop - 1)].x);*/
-
 					xPos += (aboveHalfDeckPoints[i - (pointsToTop - 1)] + originalNewHullPoints[i - (pointsToTop - 1)].x) * (aboveHalfDeckPoints[i - (pointsToTop - 1)] * newLeftHullPoints[i].y - originalNewHullPoints[i - (pointsToTop - 1)].x * newLeftHullPoints[i].y);
 					xPos += (originalNewHullPoints[i - (pointsToTop - 1)].x + xRight) * (originalNewHullPoints[i - (pointsToTop - 1)].x * waterline - xRight * newLeftHullPoints[i].y);
 					xPos += (xRight + xLeft) * (xRight * waterline - xLeft * waterline);
@@ -1036,7 +1026,6 @@ public class BuoyantHull : MonoBehaviour
 					centerOfBuoyancy += new Vector2(-xPos, yPos) * remainingArea;
 
 					area += remainingArea;
-					//print(new Vector2(-xPos, yPos) * remainingArea);
 
 					centerOfBuoyancy = GetUnrotatedPoint(centerOfBuoyancy / area + pivotOffset, waterlineAngleWithRoll);
 					return area;

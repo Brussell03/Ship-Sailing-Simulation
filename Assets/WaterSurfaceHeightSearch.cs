@@ -36,7 +36,9 @@ public class WaterSurfaceHeightSearch
 		stepCountBuffer = new NativeArray<int>(gridSizeX * gridSizeY, Allocator.Persistent);
 	}
 
-	public float[] GetWaterHeights(Vector3[] searchPositions) {
+	public float[] GetWaterHeights(Vector3[] searchPositions, out Vector3 currentDirection) {
+		currentDirection = Vector3.zero;
+
 		if (waterSurface == null)
 			return null;
 
@@ -80,6 +82,8 @@ public class WaterSurfaceHeightSearch
 		for (int i = 0; i < positionHeights.Length; i++) {
 			positionHeights[i] = projectedPositionWSBuffer[i].y;
 		}
+
+		currentDirection = directionBuffer[searchPositions.Length / 2]; // Sets current direction to direction at a middle point. Making assumption that all directions are practically equivalent
 
 		return positionHeights;
 	}
