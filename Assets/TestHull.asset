@@ -18,28 +18,28 @@ MonoBehaviour:
     bottomY: -0.3333333
     topY: 0.5
     normalizedSectionLength: 0.1
-    normalizedSectionWidth: 1
+    normalizedSectionWidth: 0.5
     normalizedSectionHeight: 0.8333333
     hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
   - zPos: -0.35
     bottomY: -0.3888889
     topY: 0.5
     normalizedSectionLength: 0.1
-    normalizedSectionWidth: 1
+    normalizedSectionWidth: 0.7
     normalizedSectionHeight: 0.8888889
     hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
   - zPos: -0.25
     bottomY: -0.4444444
     topY: 0.5
     normalizedSectionLength: 0.1
-    normalizedSectionWidth: 1
+    normalizedSectionWidth: 0.8
     normalizedSectionHeight: 0.9444444
     hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
   - zPos: -0.15
     bottomY: -0.5
     topY: 0.5
     normalizedSectionLength: 0.1
-    normalizedSectionWidth: 1
+    normalizedSectionWidth: 0.9
     normalizedSectionHeight: 1
     hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
   - zPos: -0.05
@@ -60,27 +60,27 @@ MonoBehaviour:
     bottomY: -0.5
     topY: 0.5
     normalizedSectionLength: 0.1
-    normalizedSectionWidth: 1
+    normalizedSectionWidth: 0.9
     normalizedSectionHeight: 1
     hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
   - zPos: 0.25
     bottomY: -0.4444444
     topY: 0.5
     normalizedSectionLength: 0.1
-    normalizedSectionWidth: 1
+    normalizedSectionWidth: 0.8
     normalizedSectionHeight: 0.9444444
     hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
   - zPos: 0.35
     bottomY: -0.3888889
     topY: 0.5
     normalizedSectionLength: 0.1
-    normalizedSectionWidth: 1
+    normalizedSectionWidth: 0.7
     normalizedSectionHeight: 0.8888889
     hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}
   - zPos: 0.45
     bottomY: -0.3333333
     topY: 0.5
     normalizedSectionLength: 0.1
-    normalizedSectionWidth: 1
+    normalizedSectionWidth: 0.5
     normalizedSectionHeight: 0.8333333
     hullShape: {fileID: 11400000, guid: 1ac5ab90aff591f4ba454125b90a61e2, type: 2}

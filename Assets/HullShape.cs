@@ -16,6 +16,4 @@ public class HullSection
 	public float zPos, bottomY, topY, normalizedSectionLength, normalizedSectionWidth, normalizedSectionHeight;
 	public HullSectionShape hullShape;
 
-	public float totalArea { get; set; }
-	public Vector3 submergedCenterOfBuoyancy { get; set; }
 } 
