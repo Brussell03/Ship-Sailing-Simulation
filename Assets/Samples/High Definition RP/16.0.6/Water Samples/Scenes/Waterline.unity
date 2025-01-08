@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 6335.79, g: 10468.868, b: 15028.783, a: 1}
+  m_IndirectSpecularColor: {r: 6338.249, g: 10475.29, b: 15042.518, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -4034,7 +4034,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   stretchingCompliance: 0
-  bendingCompliance: 0.5
+  bendingCompliance: 0
   density: 0.1
   substeps: 10
 --- !u!4 &1705595098
@@ -4045,13 +4045,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1705595096}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: 0.2588191, y: 0, z: 0, w: 0.9659258}
   m_LocalPosition: {x: 0, y: 10, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 30, y: 0, z: 0}
 --- !u!33 &1705595099
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -4082,7 +4082,7 @@ MeshRenderer:
   m_RenderingLayerMask: 257
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 5aae23add21646c46b2c5baceac82e31, type: 2}
+  - {fileID: 2100000, guid: 7676ede8b5021c746aa7de168d081886, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -4775,7 +4775,7 @@ PrefabInstance:
     - target: {fileID: 1769139016819857089, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2729552751315872595, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}
@@ -4785,7 +4785,7 @@ PrefabInstance:
     - target: {fileID: 2729552751315872595, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}
       propertyPath: m_LocalPosition.y
-      value: 1.0108144
+      value: -0.85248816
       objectReference: {fileID: 0}
     - target: {fileID: 2729552751315872595, guid: e1c2d461478705c4eb663d9e99bde459,
         type: 3}

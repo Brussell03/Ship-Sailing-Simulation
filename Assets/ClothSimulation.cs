@@ -3,12 +3,13 @@ using NUnit.Framework.Internal;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using static UnityEngine.InputManagerEntry;
 
 public class ClothSimulation : MonoBehaviour
 {
-    [Range(-1, 1)]
-    public float stretchingCompliance = 1f;
-	[Range(0, 1)]
+    [Range(0, 0.0001f)]
+    public float stretchingCompliance = 0f;
+	[Range(0, 10)]
 	public float bendingCompliance = 0.5f;
     public float density = 0.1f; // kg / m^2
 	public int substeps = 5;
@@ -21,7 +22,7 @@ public class ClothSimulation : MonoBehaviour
 	private int[] bendingIDs;
 	private int[] neighbors;
 	private int[] stretchingIDs;
-	private Vector3[] grads;
+	private Vector3 lastPosition;
 
     private MeshFilter meshFilter;
     private MeshRenderer meshRenderer;
@@ -32,6 +33,7 @@ public class ClothSimulation : MonoBehaviour
     {
 		meshFilter = GetComponent<MeshFilter>();
 		meshRenderer = GetComponent<MeshRenderer>();
+		lastPosition = transform.position;
 
 		Init();
     }
@@ -44,38 +46,28 @@ public class ClothSimulation : MonoBehaviour
 
 	private void FixedUpdate() {
         float dt = Time.fixedDeltaTime;
-
 		float dt_step = dt / substeps;
+
+		Vector3 stepVelocity = transform.InverseTransformVector((transform.position - lastPosition) / substeps);
+		lastPosition = transform.position;
 
 		for (int step = 0; step < substeps; step++) {
 
 			Vector3[] p = new Vector3[x.Length];
 			for (int i = 0; i < x.Length; i++) {
-				v[i] += dt_step * w[i] * transform.InverseTransformVector(Physics.gravity);
-				p[i] = x[i] + dt_step * v[i];
+				v[i] += dt_step * w[i] * transform.InverseTransformVector(Physics.gravity); // Applies gravity
+				p[i] = x[i] + dt_step * v[i] - w[i] * stepVelocity;
 			}
-
-			// dampVelocities
-
-
-			/*for (int i = 0; i < mesh.triangles.Length / 3; i++) {
-				SolveStretching(i, p);
-			}*/
 
 			SolveStretching(stretchingCompliance, dt_step, p);
 
-			for (int i = 0; i < bendingIDs.Length; i++) {
-				//BendingConstraint(i, p);
-			}
-
-			for (int i = 0; i < x.Length; i++) {
-				// generateCollisionConstraints
-			}
+			SolveBending(bendingCompliance, dt_step, p);
 
 			// loop solverIterations
 
 			for (int i = 0; i < x.Length; i++) {
-				v[i] = (p[i] - x[i]) / dt_step;
+				v[i] = (p[i] - x[i] + w[i] * stepVelocity) / dt_step;
+				v[i] *= (1 - 0.03f / substeps); // Damp Velocities
 				x[i] = p[i];
 			}
 		}
@@ -84,35 +76,7 @@ public class ClothSimulation : MonoBehaviour
 		mesh.vertices = x;
 	}
 
-	private void SolveStretching(/*int triIndex, Vector3[] p*/float compliance, float dt, Vector3[] p) {
-		/*Vector3 A = p[mesh.triangles[triIndex * 3]];
-		Vector3 B = p[mesh.triangles[triIndex * 3 + 1]];
-		Vector3 C = p[mesh.triangles[triIndex * 3 + 2]];
-
-		//float AB = (A - B).magnitude;
-		//float BC = (B - C).magnitude;
-		//float CA = (C - A).magnitude;
-
-		float wA = w[mesh.triangles[triIndex * 3]];
-		float wB = w[mesh.triangles[triIndex * 3 + 1]];
-		float wC = w[mesh.triangles[triIndex * 3 + 2]];
-
-		Vector3 dA = BinaryDistanceConstraint(A, B, wA, wB, d0[triIndex * 3]);
-		dA += BinaryDistanceConstraint(A, C, wA, wC, d0[triIndex * 3 + 2]);
-
-		Vector3 dB = BinaryDistanceConstraint(B, C, wB, wC, d0[triIndex * 3 + 1]);
-		dB += BinaryDistanceConstraint(B, A, wB, wA, d0[triIndex * 3]);
-
-		Vector3 dC = BinaryDistanceConstraint(C, A, wC, wA, d0[triIndex * 3 + 2]);
-		dC += BinaryDistanceConstraint(C, B, wC, wB, d0[triIndex * 3 + 1]);
-
-		A += dA * kStretch;
-		B += dB * kStretch;
-		C += dC * kStretch;
-
-		p[mesh.triangles[triIndex * 3]] = A;
-		p[mesh.triangles[triIndex * 3 + 1]] = B;
-		p[mesh.triangles[triIndex * 3 + 2]] = C;*/
+	private void SolveStretching(float compliance, float dt, Vector3[] p) {
 
 		float alpha = compliance / dt / dt;
 
@@ -137,55 +101,71 @@ public class ClothSimulation : MonoBehaviour
 		}
 	}
 
-	private Vector3 BinaryDistanceConstraint(Vector3 p1, Vector3 p2, float w1, float w2, float d0) {
-		// returns where p1 should go
-		return -(w1 / (w1 + w2)) * ((p1 - p2).magnitude - d0) * (p1 - p2).normalized;
-	}
+	private void SolveBending(float compliance, float dt, Vector3[] p) {
 
-	private void SolveBending(int pairIndex, Vector3[] p) {
-		/*Debug.Log("Pair: " + pairIndex);
-		Vector3 p1 = p[pairs[pairIndex][0]];
-		Vector3 p2 = p[pairs[pairIndex][1]] - p1;
-		Vector3 p3 = p[pairs[pairIndex][2]] - p1;
-		Vector3 p4 = p[pairs[pairIndex][3]] - p1;
+		float alpha = compliance / dt / dt;
 
-		Debug.Log(p2);
-		Debug.Log(p3);
-		Debug.Log(p4);
+		for (int i = 0; i < dihedral0.Length; i++) {
+			int id0 = bendingIDs[i * 4];
+			int id1 = bendingIDs[i * 4 + 1];
+			int id2 = bendingIDs[i * 4 + 2];
+			int id3 = bendingIDs[i * 4 + 3];
 
-		float w1 = w[pairs[pairIndex][0]];
-		float w2 = w[pairs[pairIndex][1]];
-		float w3 = w[pairs[pairIndex][2]];
-		float w4 = w[pairs[pairIndex][3]];
+			/*Vector3 p1 = p[id0];
+			Vector3 p2 = p[id1] - p1;
+			Vector3 p3 = p[id2] - p1;
+			Vector3 p4 = p[id3] - p1;
 
-		Vector3 n1 = Vector3.Cross(p2, p3).normalized;
-		Vector3 n2 = Vector3.Cross(p2, p4).normalized;
+			float w1 = w[id0];
+			float w2 = w[id1];
+			float w3 = w[id2];
+			float w4 = w[id3];
 
-		float d = Vector3.Dot(n1, n2);
+			Vector3 n1 = Vector3.Cross(p2, p3).normalized;
+			Vector3 n2 = Vector3.Cross(p2, p4).normalized;
 
-		Vector3 q3 = (Vector3.Cross(p2, n2) + Vector3.Cross(n1, p2) * d) / Vector3.Cross(p2, p3).magnitude;
-		Vector3 q4 = (Vector3.Cross(p2, n1) + Vector3.Cross(n2, p2) * d) / Vector3.Cross(p2, p4).magnitude;
-		Vector3 q2 = -(Vector3.Cross(p3, n2) + Vector3.Cross(n1, p3) * d) / Vector3.Cross(p2, p3).magnitude - (Vector3.Cross(p4, n1) + Vector3.Cross(n2, p4) * d) / Vector3.Cross(p2, p4).magnitude;
-		Vector3 q1 = -q2 - q3 - q4;
+			float d = Vector3.Dot(n1, n2);
 
-		float bottom = (w1 * q1.magnitude * q1.magnitude + w2 * q2.magnitude * q2.magnitude + w3 * q3.magnitude * q3.magnitude + w4 * q4.magnitude * q4.magnitude);
+			Vector3 q3 = (Vector3.Cross(p2, n2) + Vector3.Cross(n1, p2) * d) / Vector3.Cross(p2, p3).magnitude;
+			Vector3 q4 = (Vector3.Cross(p2, n1) + Vector3.Cross(n2, p2) * d) / Vector3.Cross(p2, p4).magnitude;
+			Vector3 q2 = -(Vector3.Cross(p3, n2) + Vector3.Cross(n1, p3) * d) / Vector3.Cross(p2, p3).magnitude - (Vector3.Cross(p4, n1) + Vector3.Cross(n2, p4) * d) / Vector3.Cross(p2, p4).magnitude;
+			Vector3 q1 = -q2 - q3 - q4;
 
-		float temp = 0;
-		if (bottom != 0) {
+			float bottom = (w1 * q1.magnitude * q1.magnitude + w2 * q2.magnitude * q2.magnitude + w3 * q3.magnitude * q3.magnitude + w4 * q4.magnitude * q4.magnitude);
 
-			temp = Mathf.Sqrt(1 - d * d) * (Mathf.Acos(d) - dihedral0[pairIndex]) / bottom;
+			float temp = 0;
+			if (bottom != 0) {
+				temp = Mathf.Sqrt(1 - d * d) * (Mathf.Acos(d) - dihedral0[i]) / bottom;
+			}
+
+			Vector3 dp1 = -w1 * temp * q1;
+			Vector3 dp2 = -w2 * temp * q2;
+			Vector3 dp3 = -w3 * temp * q3;
+			Vector3 dp4 = -w4 * temp * q4;
+
+			p[id0] += dp1 * bendingCompliance;
+			p[id1] += dp2 * bendingCompliance;
+			p[id2] += dp3 * bendingCompliance;
+			p[id3] += dp4 * bendingCompliance;*/
+
+			float w0 = w[id2];
+			float w1 = w[id3];
+			float wT = w0 + w1;
+			if (wT == 0) continue;
+
+			Vector3 p0 = p[id2];
+			Vector3 p1 = p[id3];
+			float len = (p0 - p1).magnitude;
+			if (len == 0) continue;
+
+			float C = len - dihedral0[i];
+			float s = -C / (wT + alpha);
+
+			p[id2] += (p0 - p1).normalized * s * w0;
+			p[id3] += (p0 - p1).normalized * -s * w1;
 		}
-		Debug.Log(temp);
-		Debug.Log(Mathf.Acos(d) - dihedral0[pairIndex]);
-		Vector3 dp1 = -w1 * temp * q1;
-		Vector3 dp2 = -w2 * temp * q2;
-		Vector3 dp3 = -w3 * temp * q3;
-		Vector3 dp4 = -w4 * temp * q4;
 
-		p[pairs[pairIndex][0]] += dp1 * kBend;
-		p[pairs[pairIndex][1]] += dp2 * kBend;
-		p[pairs[pairIndex][2]] += dp3 * kBend;
-		p[pairs[pairIndex][3]] += dp4 * kBend;*/
+		
 	}
 
     public void Init() {
@@ -261,11 +241,6 @@ public class ClothSimulation : MonoBehaviour
 		}*/
 
 		// Generate Triangle Pairs
-		dihedral0 = new float[numTris];
-		List<int> triPairs = new List<int>();
-		for (int i = 0; i < numTris; i++) {
-			dihedral0[i] = (Mathf.PI);
-		}
 		/*for (int i = 0; i < numTris; i++) {
 			int A1 = tris[i * 3];
 			int A2 = tris[i * 3 + 1];
@@ -398,6 +373,7 @@ public class ClothSimulation : MonoBehaviour
 		neighbors = FindTriNeighbors(tris);
 
 
+		List<int> triPairs = new List<int>();
 		List<int> edges = new List<int>();
 		for (int i = 0; i < numTris; i++) {
 			for (int j = 0; j < 3; j++) {
@@ -412,7 +388,7 @@ public class ClothSimulation : MonoBehaviour
 				}
 
 				// tri pair
-				if (n >= 0) { // Creating bending constraints
+				if (n >= 0 && id0 < id1) { // Creating bending constraints
 					int ni = n / 3;
 					int nj = n % 3;
 					int id2 = tris[i * 3 + (j + 2) % 3];
@@ -427,18 +403,19 @@ public class ClothSimulation : MonoBehaviour
 
 		stretchingIDs = edges.ToArray();
 		bendingIDs = triPairs.ToArray();
-		grads = new Vector3[x.Length];
+
 		d0 = new float[stretchingIDs.Length / 2];
 		for (int i = 0; i < d0.Length; i++) {
 			int id0 = stretchingIDs[2 * i];
 			int id1 = stretchingIDs[2 * i + 1];
 			d0[i] = (x[id0] - x[id1]).magnitude;
 		}
-		Debug.Log(stretchingIDs.Length);
-		Debug.Log(stretchingIDs[0]);
-		Debug.Log(stretchingIDs[1]);
-		Debug.Log(stretchingIDs[2]);
-		Debug.Log(stretchingIDs[3]);
+
+		dihedral0 = new float[bendingIDs.Length / 4];
+		for (int i = 0; i < dihedral0.Length; i++) {
+			//dihedral0[i] = (Mathf.PI);
+			dihedral0[i] = (x[bendingIDs[i * 4 + 2]] - x[bendingIDs[i * 4 + 3]]).magnitude;
+		}
 	}
 
 	private int[] FindTriNeighbors(int[] tris) {
@@ -475,7 +452,6 @@ public class ClothSimulation : MonoBehaviour
 					neighbors[e0[2]] = e1[2];
 					neighbors[e1[2]] = e0[2];
 				}
-				nr++;
 			}
 		}
 
