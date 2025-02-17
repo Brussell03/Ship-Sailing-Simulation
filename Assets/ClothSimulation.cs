@@ -1,5 +1,6 @@
 using NUnit.Framework.Constraints;
 using NUnit.Framework.Internal;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -13,9 +14,18 @@ public class ClothSimulation : MonoBehaviour
 	public float bendingCompliance = 0.5f;
     public float density = 0.1f; // kg / m^2
 	public int substeps = 5;
+	public float thickness = 0.004f; // m
+	public bool handleCollisions = true;
+
+	public float width = 10f;
+	public float height = 10f;
+	public int subdivisions = 15;
+	public ComputeShader clothCompute;
+	public float damping = 0.03f;
 
     private Vector3[] x;
     private Vector3[] v;
+	private Vector3[] restPos;
     private float[] w;
 	private float[] d0;
 	private float[] dihedral0;
@@ -26,17 +36,35 @@ public class ClothSimulation : MonoBehaviour
 
     private MeshFilter meshFilter;
     private MeshRenderer meshRenderer;
+	private MeshCollider meshCollider;
 	Mesh mesh;
+	private Hash hash;
+
+	const int ipdateVelocityKernel = 0;
+	const int predictPositionKernel = 1;
+	const int solveStretchingKernel = 2;
+	const int solveBendingKernel = 3;
+
+	ComputeBuffer xBuffer;
+	ComputeBuffer vBuffer;
+	ComputeBuffer pBuffer;
+	ComputeBuffer restPosBuffer;
+	ComputeBuffer wBuffer;
+	ComputeBuffer dihedral0Buffer;
+	ComputeBuffer bendingIDsBuffer;
+	ComputeBuffer stretchingIDsBuffer;
+
 
 	// Start is called before the first frame update
 	void Start()
     {
 		meshFilter = GetComponent<MeshFilter>();
 		meshRenderer = GetComponent<MeshRenderer>();
+		meshCollider = GetComponent<MeshCollider>();
 		lastPosition = transform.position;
 
 		Init();
-    }
+	}
 
     // Update is called once per frame
     void Update()
@@ -48,26 +76,60 @@ public class ClothSimulation : MonoBehaviour
         float dt = Time.fixedDeltaTime;
 		float dt_step = dt / substeps;
 
+		float maxVelocity = thickness / dt_step;
+
 		Vector3 stepVelocity = transform.InverseTransformVector((transform.position - lastPosition) / substeps);
 		lastPosition = transform.position;
 
+		Vector3 localGravityVector = transform.InverseTransformVector(Physics.gravity);
+
+		//float maxVelocity = 3; // m/s
+
+		if (handleCollisions) {
+			hash.Create(x);
+			//float maxTravelDist = maxVelocity * dt;
+			float maxTravelDist = thickness;
+			hash.QueryAll(x, maxTravelDist);
+		}
+
+		clothCompute.SetInt("numSubsteps", substeps);
+		clothCompute.SetInt("numVertices", x.Length);
+		clothCompute.SetVector("stepVelocity", stepVelocity);
+		clothCompute.SetVector("gravityVector", localGravityVector);
+		clothCompute.SetFloat("dt_step", dt_step);
+		clothCompute.SetFloat("damping", damping);
+		clothCompute.SetFloat("maxVelocity", maxVelocity);
+		clothCompute.SetFloat("stretchingAlpha", stretchingCompliance);
+		clothCompute.SetFloat("bendingAlpha", bendingCompliance);
+
 		for (int step = 0; step < substeps; step++) {
 
+			// Integrate predicted positions
 			Vector3[] p = new Vector3[x.Length];
 			for (int i = 0; i < x.Length; i++) {
-				v[i] += dt_step * w[i] * transform.InverseTransformVector(Physics.gravity); // Applies gravity
+				v[i] += dt_step * w[i] * localGravityVector; // Applies gravity
+
+				if (v[i].sqrMagnitude > maxVelocity * maxVelocity) {
+					v[i] = v[i].normalized * maxVelocity;
+				}
+
 				p[i] = x[i] + dt_step * v[i] - w[i] * stepVelocity;
 			}
+
 
 			SolveStretching(stretchingCompliance, dt_step, p);
 
 			SolveBending(bendingCompliance, dt_step, p);
 
+			if (handleCollisions) {
+				SolveCollisions(p);
+			}
+
 			// loop solverIterations
 
 			for (int i = 0; i < x.Length; i++) {
 				v[i] = (p[i] - x[i] + w[i] * stepVelocity) / dt_step;
-				v[i] *= (1 - 0.03f / substeps); // Damp Velocities
+				v[i] *= (1 - damping / substeps); // Damp Velocities
 				x[i] = p[i];
 			}
 		}
@@ -168,12 +230,74 @@ public class ClothSimulation : MonoBehaviour
 		
 	}
 
+	private void SolveCollisions(Vector3[] p) {
+		float thickness2 = thickness * thickness;
+
+		for (int i = 0; i < x.Length; i++) {
+			if (w[i] == 0.0)
+				continue;
+			int id0 = i;
+			int first = hash.firstAdjId[i];
+			int last = hash.firstAdjId[i + 1];
+			//Debug.Log(first);
+			//Debug.Log(last);
+
+			for (int j = first; j < last; j++) {
+
+				int id1 = hash.adjIds[j];
+				if (w[id1] == 0.0)
+					continue;
+
+				Vector3 vec = p[id1] - p[id0];
+
+				float dist2 = vec.sqrMagnitude;//vecLengthSquared(vecs, 0);
+				if (dist2 > thickness2 || dist2 == 0.0)
+					continue;
+				float restDist2 = (restPos[id0] - restPos[id1]).sqrMagnitude;//vecDistSquared(restPos, id0, restPos, id1);
+
+				float minDist = thickness;
+				if (dist2 > restDist2)
+					continue;
+				if (restDist2 < thickness2)
+					minDist = Mathf.Sqrt(restDist2);
+
+				// position correction
+				float dist = Mathf.Sqrt(dist2);
+				//vecScale(vecs, 0, (minDist - dist) / dist);
+				//vecAdd(pos, id0, vecs, 0, -0.5);
+				//vecAdd(pos, id1, vecs, 0, 0.5);
+
+				vec *= (minDist - dist) / dist;
+				p[id0] += vec * -0.5f;
+				p[id1] += vec * 0.5f;
+
+				// velocities
+				//vecSetDiff(this.vecs, 0, this.pos, id0, this.prevPos, id0);
+				//vecSetDiff(this.vecs, 1, this.pos, id1, this.prevPos, id1);
+				Vector3 vec0 = p[id0] - x[id0];
+				Vector3 vec1 = p[id1] - x[id1];
+
+				// average velocity
+				//vecSetSum(this.vecs, 2, this.vecs, 0, this.vecs, 1, 0.5);
+				Vector3 vec2 = (vec0 + vec1) * 0.5f;
+
+				// velocity corrections
+				//vecSetDiff(this.vecs, 0, this.vecs, 2, this.vecs, 0);
+				//vecSetDiff(this.vecs, 1, this.vecs, 2, this.vecs, 1);
+				vec0 = vec2 - vec0;
+				vec1 = vec2 - vec1;
+
+				// add corrections
+				float friction = 0.0f;
+				//vecAdd(this.pos, id0, this.vecs, 0, friction);
+				//vecAdd(this.pos, id1, this.vecs, 1, friction);
+				p[id0] += vec0 * friction;
+				p[id1] += vec1 * friction;
+			}
+		}
+	}
+
     public void Init() {
-
-		float width = 10f;
-		float height = 10f;
-		int subdivisions = 25;
-
 
 		// Create an empty Mesh
 		mesh = new Mesh();
@@ -185,20 +309,24 @@ public class ClothSimulation : MonoBehaviour
 		x = new Vector3[vertexCount];
 		v = new Vector3[vertexCount];
 		w = new float[vertexCount];
+		Vector2[] uv = new Vector2[vertexCount];
 
 		// Calculate vertex positions and UV coordinates
 		for (int i = 0; i < subdivisions + 1; i++) {
 			for (int j = 0; j < subdivisions + 1; j++) {
 				x[j + i * (subdivisions + 1)] = new Vector3(j / (float)subdivisions * width, 0, height - i / (float)subdivisions * height);
+				uv[j + i * (subdivisions + 1)] = new Vector3(j / (float)subdivisions * width, height - i / (float)subdivisions * height);
 
 				w[j + i * (subdivisions + 1)] = 1f;
 			}
 		}
-
+		
 		w[0] = 0;
 		w[subdivisions] = 0;
 		w[w.Length - 1] = 0;
 		w[w.Length - 1 - subdivisions] = 0;
+		
+		//w[w.Length / 2 + subdivisions / 2] = 0;
 
 		// Create arrays to store triangle indices
 		int[] tris = new int[subdivisions * subdivisions * 6];
@@ -220,11 +348,14 @@ public class ClothSimulation : MonoBehaviour
 		// Assign the calculated data to the mesh
 		mesh.vertices = x;
 		mesh.triangles = tris;
+		mesh.uv = uv;
 		mesh.RecalculateNormals();
 		mesh.RecalculateTangents();
+		mesh.RecalculateBounds();
 
 		// Assign the mesh to the GameObject
 		meshFilter.mesh = mesh;
+		meshCollider.sharedMesh = mesh;
 
 
 		// Generate default distances
@@ -416,6 +547,39 @@ public class ClothSimulation : MonoBehaviour
 			//dihedral0[i] = (Mathf.PI);
 			dihedral0[i] = (x[bendingIDs[i * 4 + 2]] - x[bendingIDs[i * 4 + 3]]).magnitude;
 		}
+
+		// Create Hash
+		hash = new Hash(Mathf.Min(width, height) / subdivisions / 5f, x.Length);
+
+		restPos = x;
+
+		#region Generate and Assign Buffers
+		xBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(x.Length);
+		xBuffer.SetData(x);
+
+		vBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(v.Length);
+		vBuffer.SetData(v);
+
+		wBuffer = ComputeHelper.CreateStructuredBuffer<float>(w.Length);
+		wBuffer.SetData(x);
+
+		pBuffer = ComputeHelper.CreateStructuredBuffer<float>(x.Length);
+		//pBuffer.SetData(p);
+
+		stretchingIDsBuffer = ComputeHelper.CreateStructuredBuffer<float>(stretchingIDs.Length);
+		stretchingIDsBuffer.SetData(stretchingIDs);
+
+		bendingIDsBuffer = ComputeHelper.CreateStructuredBuffer<float>(bendingIDs.Length);
+		bendingIDsBuffer.SetData(bendingIDs);
+
+		restPosBuffer = ComputeHelper.CreateStructuredBuffer<float>(restPos.Length);
+		restPosBuffer.SetData(restPos);
+
+		dihedral0Buffer = ComputeHelper.CreateStructuredBuffer<float>(dihedral0.Length);
+		dihedral0Buffer.SetData(dihedral0);
+
+		//clothCompute.SetBuffer("x", xBuffer);
+		#endregion
 	}
 
 	private int[] FindTriNeighbors(int[] tris) {
@@ -456,5 +620,154 @@ public class ClothSimulation : MonoBehaviour
 		}
 
 		return neighbors;
+	}
+
+	void OnDestroy() {
+		Release();
+	}
+
+	void Release() {
+		ComputeHelper.Release(xBuffer, vBuffer, wBuffer, pBuffer, stretchingIDsBuffer, bendingIDsBuffer, restPosBuffer, dihedral0Buffer);
+	}
+}
+
+class Hash {
+	public float spacing;
+	public int tableSize;
+	public int[] cellStart;
+	public int[] cellEntries;
+	public int[] queryIds;
+	public int querySize;
+	public int maxNumObjects;
+	public int[] firstAdjId;
+	public int[] adjIds;
+
+	public Hash(float spacing, int maxNumObjects) {
+		this.spacing = spacing;
+		tableSize = 5 * maxNumObjects;
+		cellStart = new int[tableSize + 1];
+		cellEntries = new int[maxNumObjects];
+		queryIds = new int[maxNumObjects];
+		querySize = 0;
+
+		this.maxNumObjects = maxNumObjects;
+		firstAdjId = new int[maxNumObjects + 1];
+		adjIds = new int[10 * maxNumObjects];
+	}
+
+	private int HashCoords(int xi, int yi, int zi) {
+		int h = (xi * 92837111) ^ (yi * 689287499) ^ (zi * 283923481);
+		return Mathf.Abs(h) % tableSize;
+	}
+
+	private int IntCoord(float coord) {
+		return Mathf.FloorToInt(coord / spacing);
+	}
+
+	private int HashPos(Vector3 pos) {
+		return HashCoords(IntCoord(pos.x), IntCoord(pos.y), IntCoord(pos.z));
+	}
+
+	public void Create(Vector3[] pos) {
+		int numObjects = Mathf.Min(pos.Length, cellEntries.Length);
+
+		// determine cell sizes
+
+		for (int i = 0; i < cellStart.Length; i++) {
+			cellStart[i] = 0;
+		}
+		for (int i = 0; i < cellEntries.Length; i++) {
+			cellEntries[i] = 0;
+		}
+
+		// determine cell starts
+
+		//int start = (int)Mathf.Log(pos.Length) + 4;
+		int start = 0;
+		for (int i = 0; i < tableSize; i++) {
+			start += cellStart[i];
+			cellStart[i] = start;
+		}
+		cellStart[tableSize] = start; // guard
+
+		// Count
+
+		for (int i = 0; i < numObjects; i++) {
+			int h = HashPos(pos[i]);
+			cellStart[h]++;
+		}
+
+		// Partial Sums
+
+		for (int i = 1; i < cellStart.Length; i++) {
+			cellStart[i] += cellStart[i - 1];
+		}
+
+		// fill in object ids
+
+		for (int i = 0; i < numObjects; i++) {
+			int h = HashPos(pos[i]);
+			cellStart[h]--;
+			cellEntries[cellStart[h]] = i;
+		}
+	}
+
+	public void Query(Vector3 pos, float maxDist) {
+		int x0 = IntCoord(pos.x - maxDist);
+		int y0 = IntCoord(pos.y - maxDist);
+		int z0 = IntCoord(pos.z - maxDist);
+
+		int x1 = IntCoord(pos.x + maxDist);
+		int y1 = IntCoord(pos.y + maxDist);
+		int z1 = IntCoord(pos.z + maxDist);
+
+		querySize = 0;
+
+		for (int xi = x0; xi <= x1; xi++) {
+			for (int yi = y0; yi <= y1; yi++) {
+				for (int zi = z0; zi <= z1; zi++) {
+					int h = HashCoords(xi, yi, zi);
+					int start = cellStart[h];
+					int end = cellStart[h + 1];
+
+					for (int i = start; i < end; i++) {
+						queryIds[querySize] = cellEntries[i];
+						querySize++;
+					}
+				}
+			}
+		}
+	}
+
+	public void QueryAll(Vector3[] pos, float maxDist) {
+		int num = 0;
+		float maxDist2 = maxDist * maxDist;
+
+		for (int i = 0; i < maxNumObjects; i++) {
+			int id0 = i;
+			firstAdjId[id0] = num;
+			Query(pos[id0], maxDist);
+
+			for (int j = 0; j < querySize; j++) {
+				int id1 = queryIds[j];
+				if (id1 >= id0)
+					continue;
+
+				float dist2 = (pos[id0] - pos[id1]).sqrMagnitude;
+				if (dist2 > maxDist2)
+					continue;
+
+				if (num >= adjIds.Length) {
+					Debug.Log("Creating Larger Array");
+					int[] newIds = new int[2 * num];  // dynamic array
+					System.Array.Copy(adjIds, newIds, adjIds.Length);
+					//newIds.set(adjIds);
+					adjIds = newIds;
+				}
+				adjIds[num++] = id1;
+			}
+		}
+
+		firstAdjId[maxNumObjects] = num;
 	}
 }
