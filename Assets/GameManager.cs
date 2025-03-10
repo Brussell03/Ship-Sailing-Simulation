@@ -11,7 +11,7 @@ public class GameManager : MonoBehaviour
 	// Start is called before the first frame update
 	void Start()
 	{
-		Application.targetFrameRate = 144;
+		//Application.targetFrameRate = 144;
 		waterSurface.simulationStart = new DateTime(2008, 5, 1, 8, 30, 52); // HDRP will compute the water simulation as if the program started at that time
 	}
 

@@ -8,14 +8,21 @@ using static UnityEngine.InputManagerEntry;
 
 public class ClothSimulation : MonoBehaviour
 {
-    [Range(0, 0.0001f)]
-    public float stretchingCompliance = 0f;
+	[Range(0, 0.0001f)]
+	public float stretchingCompliance = 0f;
 	[Range(0, 10)]
 	public float bendingCompliance = 0.5f;
-    public float density = 0.1f; // kg / m^2
+	public float density = 0.1f; // kg / m^2
+	[Range(3, 20)]
 	public int substeps = 5;
 	public float thickness = 0.004f; // m
+	[Range(0, 10)]
+	public float windSpeed = 1f; // m/s
 	public bool handleCollisions = true;
+	public bool applyGravity = true;
+	public bool applyWind = true;
+	[Min(1)]
+	public int projectionIterations = 3;
 
 	public float width = 10f;
 	public float height = 10f;
@@ -23,24 +30,26 @@ public class ClothSimulation : MonoBehaviour
 	public ComputeShader clothCompute;
 	public float damping = 0.03f;
 
-    private Vector3[] x;
-    private Vector3[] v;
+	public Vector3[] x { get; set; }
+	private Vector3[] v;
 	private Vector3[] restPos;
-    private float[] w;
-	private float[] d0;
-	private float[] dihedral0;
-	private int[] bendingIDs;
+	public float[] w { get; set; }
+	public float[][] d0 { get; set; }
+	public float[][] dihedral0 { get; set; }
+	public int[][] bendingIDs { get; set; }
 	private int[] neighbors;
-	private int[] stretchingIDs;
+	public int[][] stretchingIDs { get; set; }
 	private Vector3 lastPosition;
+	public bool isInitialized { get; set; } = false;
+	public bool isSimulating { get; set; } = false;
 
-    private MeshFilter meshFilter;
-    private MeshRenderer meshRenderer;
+	private MeshFilter meshFilter;
+	public MeshRenderer meshRenderer { get; private set; }
 	private MeshCollider meshCollider;
 	Mesh mesh;
 	private Hash hash;
 
-	const int ipdateVelocityKernel = 0;
+	const int updateVelocityKernel = 0;
 	const int predictPositionKernel = 1;
 	const int solveStretchingKernel = 2;
 	const int solveBendingKernel = 3;
@@ -48,32 +57,72 @@ public class ClothSimulation : MonoBehaviour
 	ComputeBuffer xBuffer;
 	ComputeBuffer vBuffer;
 	ComputeBuffer pBuffer;
-	ComputeBuffer restPosBuffer;
 	ComputeBuffer wBuffer;
-	ComputeBuffer dihedral0Buffer;
-	ComputeBuffer bendingIDsBuffer;
-	ComputeBuffer stretchingIDsBuffer;
+	ComputeBuffer[] d0Buffers;
+	ComputeBuffer[] dihedral0Buffers;
+	ComputeBuffer[] bendingIDsBuffers;
+	ComputeBuffer[] stretchingIDsBuffers;
+
+	public bool drawGraphColoring = false;
 
 
 	// Start is called before the first frame update
 	void Start()
-    {
+	{
 		meshFilter = GetComponent<MeshFilter>();
 		meshRenderer = GetComponent<MeshRenderer>();
 		meshCollider = GetComponent<MeshCollider>();
+		clothCompute = Instantiate(clothCompute);
 		lastPosition = transform.position;
 
 		Init();
+
+		if (drawGraphColoring) {
+			for (int i = 0; i < d0.Length; i++) {
+				for (int j = 0; j < d0[i].Length; j++) {
+					int id0 = stretchingIDs[i][j * 2];
+					int id1 = stretchingIDs[i][j * 2 + 1];
+
+					Vector3 p0 = x[id0];
+					Vector3 p1 = x[id1];
+
+					if (i == 0) Debug.DrawLine(p0, p1, Color.yellow);
+					else if (i == 1) Debug.DrawLine(p0, p1, Color.red);
+					else if (i == 2) Debug.DrawLine(p0, p1, Color.blue);
+					else if (i == 3) Debug.DrawLine(p0, p1, Color.green);
+					else if (i == 4) Debug.DrawLine(p0, p1, Color.magenta);
+					else if (i == 5) Debug.DrawLine(p0, p1, Color.black);
+				}
+			}
+
+			for (int i = 0; i < dihedral0.Length; i++) {
+				for (int j = 0; j < dihedral0[i].Length; j++) {
+					int id0 = bendingIDs[i][j * 4 + 2];
+					int id1 = bendingIDs[i][j * 4 + 3];
+
+					Vector3 p0 = x[id0];
+					Vector3 p1 = x[id1];
+
+					if (i == 0) Debug.DrawLine(p0, p1, Color.white);
+					else if (i == 1) Debug.DrawLine(p0, p1, Color.cyan);
+					else if (i == 2) Debug.DrawLine(p0, p1, Color.green);
+					else if (i == 3) Debug.DrawLine(p0, p1, Color.red);
+					else if (i == 4) Debug.DrawLine(p0, p1, Color.yellow);
+					else if (i == 5) Debug.DrawLine(p0, p1, Color.magenta);
+				}
+			}
+		}
 	}
 
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
+	// Update is called once per frame
+	void Update()
+	{
+		
+	}
 
 	private void FixedUpdate() {
-        float dt = Time.fixedDeltaTime;
+
+		/*float dt = Time.fixedDeltaTime;
 		float dt_step = dt / substeps;
 
 		float maxVelocity = thickness / dt_step;
@@ -81,65 +130,59 @@ public class ClothSimulation : MonoBehaviour
 		Vector3 stepVelocity = transform.InverseTransformVector((transform.position - lastPosition) / substeps);
 		lastPosition = transform.position;
 
-		Vector3 localGravityVector = transform.InverseTransformVector(Physics.gravity);
+		Vector3 localGravityVector = applyGravity ? transform.InverseTransformVector(Physics.gravity) : Vector3.zero;
+		Vector3 localWindVector = applyWind ? transform.InverseTransformVector(Vector3.back) * (windSpeed + (Mathf.PingPong(Time.time * 4, 6) - 3f)) : Vector3.zero;
 
-		//float maxVelocity = 3; // m/s
+		//float maxVelocity = 3; // m/s*/
 
-		if (handleCollisions) {
+		/*if (handleCollisions) {
 			hash.Create(x);
 			//float maxTravelDist = maxVelocity * dt;
 			float maxTravelDist = thickness;
 			hash.QueryAll(x, maxTravelDist);
-		}
+		}*/
 
-		clothCompute.SetInt("numSubsteps", substeps);
+		/*clothCompute.SetInt("numSubsteps", substeps);
 		clothCompute.SetInt("numVertices", x.Length);
+		clothCompute.SetFloat("projectionIterations", projectionIterations);
 		clothCompute.SetVector("stepVelocity", stepVelocity);
 		clothCompute.SetVector("gravityVector", localGravityVector);
+		clothCompute.SetVector("windVector", localWindVector);
 		clothCompute.SetFloat("dt_step", dt_step);
 		clothCompute.SetFloat("damping", damping);
 		clothCompute.SetFloat("maxVelocity", maxVelocity);
-		clothCompute.SetFloat("stretchingAlpha", stretchingCompliance);
-		clothCompute.SetFloat("bendingAlpha", bendingCompliance);
+		clothCompute.SetFloat("stretchingAlpha", stretchingCompliance / (dt_step * dt_step));
+		clothCompute.SetFloat("bendingAlpha", bendingCompliance / (dt_step * dt_step));
 
 		for (int step = 0; step < substeps; step++) {
 
-			// Integrate predicted positions
-			Vector3[] p = new Vector3[x.Length];
-			for (int i = 0; i < x.Length; i++) {
-				v[i] += dt_step * w[i] * localGravityVector; // Applies gravity
+			ComputeHelper.Dispatch(clothCompute, x.Length, kernelIndex: predictPositionKernel);
 
-				if (v[i].sqrMagnitude > maxVelocity * maxVelocity) {
-					v[i] = v[i].normalized * maxVelocity;
-				}
+			for (int i = 0; i < d0.Length; i++) {
+				clothCompute.SetBuffer(solveStretchingKernel, "d0", d0Buffers[i]);
+				clothCompute.SetBuffer(solveStretchingKernel, "stretchingIDs", stretchingIDsBuffers[i]);
 
-				p[i] = x[i] + dt_step * v[i] - w[i] * stepVelocity;
+				ComputeHelper.Dispatch(clothCompute, d0[i].Length, kernelIndex: solveStretchingKernel);
 			}
 
+			for (int i = 0; i < dihedral0.Length; i++) {
+				clothCompute.SetBuffer(solveBendingKernel, "dihedral0", dihedral0Buffers[i]);
+				clothCompute.SetBuffer(solveBendingKernel, "bendingIDs", bendingIDsBuffers[i]);
 
-			SolveStretching(stretchingCompliance, dt_step, p);
-
-			SolveBending(bendingCompliance, dt_step, p);
-
-			if (handleCollisions) {
-				SolveCollisions(p);
+				ComputeHelper.Dispatch(clothCompute, dihedral0[i].Length, kernelIndex: solveBendingKernel);
 			}
 
-			// loop solverIterations
-
-			for (int i = 0; i < x.Length; i++) {
-				v[i] = (p[i] - x[i] + w[i] * stepVelocity) / dt_step;
-				v[i] *= (1 - damping / substeps); // Damp Velocities
-				x[i] = p[i];
-			}
+			ComputeHelper.Dispatch(clothCompute, x.Length, kernelIndex: updateVelocityKernel);
 		}
 
-		
+
+		x = ComputeHelper.ReadDataFromBuffer<Vector3>(xBuffer, x, isAppendBuffer: false);*/
 		mesh.vertices = x;
+		mesh.RecalculateBounds();
 	}
 
 	private void SolveStretching(float compliance, float dt, Vector3[] p) {
-
+		/*
 		float alpha = compliance / dt / dt;
 
 		for (int i = 0; i < d0.Length; i++) {
@@ -160,11 +203,11 @@ public class ClothSimulation : MonoBehaviour
 
 			p[id0] += (p0 - p1).normalized * s * w0;
 			p[id1] += (p0 - p1).normalized * -s * w1;
-		}
+		}*/
 	}
 
 	private void SolveBending(float compliance, float dt, Vector3[] p) {
-
+		/*
 		float alpha = compliance / dt / dt;
 
 		for (int i = 0; i < dihedral0.Length; i++) {
@@ -172,43 +215,6 @@ public class ClothSimulation : MonoBehaviour
 			int id1 = bendingIDs[i * 4 + 1];
 			int id2 = bendingIDs[i * 4 + 2];
 			int id3 = bendingIDs[i * 4 + 3];
-
-			/*Vector3 p1 = p[id0];
-			Vector3 p2 = p[id1] - p1;
-			Vector3 p3 = p[id2] - p1;
-			Vector3 p4 = p[id3] - p1;
-
-			float w1 = w[id0];
-			float w2 = w[id1];
-			float w3 = w[id2];
-			float w4 = w[id3];
-
-			Vector3 n1 = Vector3.Cross(p2, p3).normalized;
-			Vector3 n2 = Vector3.Cross(p2, p4).normalized;
-
-			float d = Vector3.Dot(n1, n2);
-
-			Vector3 q3 = (Vector3.Cross(p2, n2) + Vector3.Cross(n1, p2) * d) / Vector3.Cross(p2, p3).magnitude;
-			Vector3 q4 = (Vector3.Cross(p2, n1) + Vector3.Cross(n2, p2) * d) / Vector3.Cross(p2, p4).magnitude;
-			Vector3 q2 = -(Vector3.Cross(p3, n2) + Vector3.Cross(n1, p3) * d) / Vector3.Cross(p2, p3).magnitude - (Vector3.Cross(p4, n1) + Vector3.Cross(n2, p4) * d) / Vector3.Cross(p2, p4).magnitude;
-			Vector3 q1 = -q2 - q3 - q4;
-
-			float bottom = (w1 * q1.magnitude * q1.magnitude + w2 * q2.magnitude * q2.magnitude + w3 * q3.magnitude * q3.magnitude + w4 * q4.magnitude * q4.magnitude);
-
-			float temp = 0;
-			if (bottom != 0) {
-				temp = Mathf.Sqrt(1 - d * d) * (Mathf.Acos(d) - dihedral0[i]) / bottom;
-			}
-
-			Vector3 dp1 = -w1 * temp * q1;
-			Vector3 dp2 = -w2 * temp * q2;
-			Vector3 dp3 = -w3 * temp * q3;
-			Vector3 dp4 = -w4 * temp * q4;
-
-			p[id0] += dp1 * bendingCompliance;
-			p[id1] += dp2 * bendingCompliance;
-			p[id2] += dp3 * bendingCompliance;
-			p[id3] += dp4 * bendingCompliance;*/
 
 			float w0 = w[id2];
 			float w1 = w[id3];
@@ -227,7 +233,7 @@ public class ClothSimulation : MonoBehaviour
 			p[id3] += (p0 - p1).normalized * -s * w1;
 		}
 
-		
+		*/
 	}
 
 	private void SolveCollisions(Vector3[] p) {
@@ -297,7 +303,7 @@ public class ClothSimulation : MonoBehaviour
 		}
 	}
 
-    public void Init() {
+	public void Init() {
 
 		// Create an empty Mesh
 		mesh = new Mesh();
@@ -311,16 +317,39 @@ public class ClothSimulation : MonoBehaviour
 		w = new float[vertexCount];
 		Vector2[] uv = new Vector2[vertexCount];
 
+		float wScale = 0.00001f;
+		float invCellMass = (subdivisions * subdivisions) / (density * thickness * width * height) * wScale;
+		//float maxW = 0f; // For normalization
+
 		// Calculate vertex positions and UV coordinates
 		for (int i = 0; i < subdivisions + 1; i++) {
 			for (int j = 0; j < subdivisions + 1; j++) {
 				x[j + i * (subdivisions + 1)] = new Vector3(j / (float)subdivisions * width, 0, height - i / (float)subdivisions * height);
 				uv[j + i * (subdivisions + 1)] = new Vector3(j / (float)subdivisions * width, height - i / (float)subdivisions * height);
 
-				w[j + i * (subdivisions + 1)] = 1f;
+
+				if ((i == 0 && j == 0) || (i == subdivisions && j == 0) || (i == subdivisions && j == subdivisions) || (i == 0 && j == subdivisions)) {
+					// Corner Point
+					w[j + i * (subdivisions + 1)] = 4f * invCellMass;
+				} else if (i == 0 || i == subdivisions || j == 0 || j == subdivisions) {
+					// Edge Point
+					w[j + i * (subdivisions + 1)] = 2f * invCellMass;
+				} else {
+					// Inner Point
+					w[j + i * (subdivisions + 1)] = invCellMass;
+				}
+				//w[j + i * (subdivisions + 1)] = 1;
+				//maxW = Mathf.Max(maxW, w[j + i * (subdivisions + 1)]); // For normalization
 			}
 		}
-		
+
+		// Normalization (Optional)
+		/*for (int i = 0; i < subdivisions + 1; i++) {
+			for (int j = 0; j < subdivisions + 1; j++) {
+				w[j + i * (subdivisions + 1)] /= maxW; // Normalize to 0-1 range
+			}
+		}*/
+
 		w[0] = 0;
 		w[subdivisions] = 0;
 		w[w.Length - 1] = 0;
@@ -504,9 +533,21 @@ public class ClothSimulation : MonoBehaviour
 		neighbors = FindTriNeighbors(tris);
 
 
-		List<int> triPairs = new List<int>();
-		List<int> edges = new List<int>();
+		List<int>[] triPairs = new List<int>[] {
+			new List<int>(), new List<int>(),  new List<int>(), new List<int>(),  new List<int>(), new List<int>()
+		};
+		List<int>[] edges = new List<int>[] {
+			new List<int>(), new List<int>(),  new List<int>(), new List<int>(), new List<int>(), new List<int>()
+		};
+
+		int count = 0;
 		for (int i = 0; i < numTris; i++) {
+			bool evenTri = i % 2 == 1; // Is the triangle a top-left triangle instead of bottom-right
+			bool evenCol = (i / 2) % 2 == 1; // Is the column the triangle is in an even one
+			bool evenRow = (i / (subdivisions * 2)) % 2 == 1; // Is the row the triangle is in an even one
+			bool topRow = i < subdivisions * 2;
+			bool bottomRow = i > (numTris - subdivisions * 2);
+
 			for (int j = 0; j < 3; j++) {
 				int id0 = tris[i * 3 + j];
 				int id1 = tris[i * 3 + (j + 1) % 3];
@@ -514,9 +555,63 @@ public class ClothSimulation : MonoBehaviour
 				// each edge only once
 				int n = neighbors[i * 3 + j];
 				if (n < 0 || id0 < id1) {
-					edges.Add(id0); // Creating edge constraints
-					edges.Add(id1);
+					//edges.Add(id0); // Creating edge constraints
+					//edges.Add(id1);
+
+					if (!evenTri) {
+						if (j == 0) { // Upper Horizontal edge
+							if (evenCol) {
+								edges[0].Add(id0);
+								edges[0].Add(id1);
+							} else {
+								edges[1].Add(id0);
+								edges[1].Add(id1);
+							}
+						} else if (i % (subdivisions * 2) == 0 && j == 2) { // First Column & Left Vertical Edge
+							if (evenRow) {
+								edges[2].Add(id0);
+								edges[2].Add(id1);
+							} else {
+								edges[3].Add(id0);
+								edges[3].Add(id1);
+							}
+						} else { // Diagonal Edge
+							if (evenRow) {
+								edges[4].Add(id0);
+								edges[4].Add(id1);
+							} else {
+								edges[5].Add(id0);
+								edges[5].Add(id1);
+							}
+						}
+						
+					} else {
+						// Even (Lower-Right) Triangle
+						// Always make Bottom and Right edges
+						if (j == 0) {
+							// Right Edge
+							if (evenRow) {
+								edges[2].Add(id0);
+								edges[2].Add(id1);
+							} else {
+								edges[3].Add(id0);
+								edges[3].Add(id1);
+							}
+						} else if (j == 1 && bottomRow) {
+							// Bottom Edge & Bottom Row
+							if (evenCol) {
+								edges[0].Add(id0);
+								edges[0].Add(id1);
+							} else {
+								edges[1].Add(id0);
+								edges[1].Add(id1);
+							}
+						}
+					}
 				}
+
+
+				if (i % (subdivisions * 2) == subdivisions * 2 - 1) count = 0; // Rightmost column
 
 				// tri pair
 				if (n >= 0 && id0 < id1) { // Creating bending constraints
@@ -524,36 +619,146 @@ public class ClothSimulation : MonoBehaviour
 					int nj = n % 3;
 					int id2 = tris[i * 3 + (j + 2) % 3];
 					int id3 = tris[ni * 3 + (nj + 2) % 3];
-					triPairs.Add(id0);
-					triPairs.Add(id1);
-					triPairs.Add(id2);
-					triPairs.Add(id3);
+
+					if (j == 1) {
+						if (evenCol) {
+							triPairs[0].Add(id0);
+							triPairs[0].Add(id1);
+							triPairs[0].Add(id2);
+							triPairs[0].Add(id3);
+						} else {
+							triPairs[2].Add(id0);
+							triPairs[2].Add(id1);
+							triPairs[2].Add(id2);
+							triPairs[2].Add(id3);
+						}
+					} else {
+						if (topRow) {
+							if (evenCol) {
+								triPairs[1].Add(id0);
+								triPairs[1].Add(id1);
+								triPairs[1].Add(id2);
+								triPairs[1].Add(id3);
+							} else {
+								triPairs[3].Add(id0);
+								triPairs[3].Add(id1);
+								triPairs[3].Add(id2);
+								triPairs[3].Add(id3);
+							}
+						} else {
+							if (count == 0) {
+								if (evenCol) {
+									triPairs[4].Add(id0);
+									triPairs[4].Add(id1);
+									triPairs[4].Add(id2);
+									triPairs[4].Add(id3);
+								} else {
+									triPairs[5].Add(id0);
+									triPairs[5].Add(id1);
+									triPairs[5].Add(id2);
+									triPairs[5].Add(id3);
+								}
+							} else {
+								if (evenCol) {
+									if (evenRow) {
+										triPairs[3].Add(id0);
+										triPairs[3].Add(id1);
+										triPairs[3].Add(id2);
+										triPairs[3].Add(id3);
+									} else {
+										triPairs[1].Add(id0);
+										triPairs[1].Add(id1);
+										triPairs[1].Add(id2);
+										triPairs[1].Add(id3);
+									}
+								} else {
+									if (evenRow) {
+										triPairs[1].Add(id0);
+										triPairs[1].Add(id1);
+										triPairs[1].Add(id2);
+										triPairs[1].Add(id3);
+									} else {
+										triPairs[3].Add(id0);
+										triPairs[3].Add(id1);
+										triPairs[3].Add(id2);
+										triPairs[3].Add(id3);
+									}
+								}
+							}
+							count++;
+							if (count > 1) count = 0;
+						}
+					}
+
 				}
 			}
 		}
+		
+		
+		stretchingIDs = new int[edges.Length][]; // Initialize the outer array
 
-		stretchingIDs = edges.ToArray();
-		bendingIDs = triPairs.ToArray();
+		for (int i = 0; i < edges.Length; i++) {
+			if (edges[i] != null) {
+				stretchingIDs[i] = edges[i].ToArray();
+			} else {
+				stretchingIDs[i] = new int[0];
+			}
+		}
 
-		d0 = new float[stretchingIDs.Length / 2];
+		//bendingIDs = triPairs.ToArray();
+		bendingIDs = new int[triPairs.Length][];
+
+		for (int i = 0; i < triPairs.Length; i++) {
+			if (triPairs[i] != null) {
+				bendingIDs[i] = triPairs[i].ToArray();
+			} else {
+				bendingIDs[i] = new int[0];
+			}
+		}
+
+		d0 = new float[stretchingIDs.Length][];
+		for (int i = 0; i < d0.Length; i++) {
+			d0[i] = new float[stretchingIDs[i].Length / 2];
+			for (int j = 0; j < d0[i].Length; j++) {
+				int id0 = stretchingIDs[i][2 * j];
+				int id1 = stretchingIDs[i][2 * j + 1];
+				d0[i][j] = (x[id0] - x[id1]).magnitude;
+			}
+		}
+		/*d0 = new float[stretchingIDs.Length / 2];
 		for (int i = 0; i < d0.Length; i++) {
 			int id0 = stretchingIDs[2 * i];
 			int id1 = stretchingIDs[2 * i + 1];
 			d0[i] = (x[id0] - x[id1]).magnitude;
-		}
+		}*/
 
-		dihedral0 = new float[bendingIDs.Length / 4];
-		for (int i = 0; i < dihedral0.Length; i++) {
+		dihedral0 = new float[bendingIDs.Length][];
+		/*for (int i = 0; i < dihedral0.Length; i++) {
 			//dihedral0[i] = (Mathf.PI);
-			dihedral0[i] = (x[bendingIDs[i * 4 + 2]] - x[bendingIDs[i * 4 + 3]]).magnitude;
+			//dihedral0[i] = (x[bendingIDs[i * 4 + 2]] - x[bendingIDs[i * 4 + 3]]).magnitude;
+		}*/
+		for (int i = 0; i < dihedral0.Length; i++) {
+			dihedral0[i] = new float[bendingIDs[i].Length / 4];
+			for (int j = 0; j < dihedral0[i].Length; j++) {
+				int id0 = bendingIDs[i][4 * j + 2];
+				int id1 = bendingIDs[i][4 * j + 3];
+				dihedral0[i][j] = (x[id0] - x[id1]).magnitude;
+			}
 		}
 
 		// Create Hash
-		hash = new Hash(Mathf.Min(width, height) / subdivisions / 5f, x.Length);
+		//hash = new Hash(Mathf.Min(width, height) / subdivisions / 5f, x.Length);
 
 		restPos = x;
 
-		#region Generate and Assign Buffers
+		//CreateBuffers();
+		isInitialized = true;
+	}
+
+	private void CreateBuffers() {
+		Release();
+		Debug.Log("Creating Buffers");
+
 		xBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(x.Length);
 		xBuffer.SetData(x);
 
@@ -561,25 +766,45 @@ public class ClothSimulation : MonoBehaviour
 		vBuffer.SetData(v);
 
 		wBuffer = ComputeHelper.CreateStructuredBuffer<float>(w.Length);
-		wBuffer.SetData(x);
+		wBuffer.SetData(w);
 
-		pBuffer = ComputeHelper.CreateStructuredBuffer<float>(x.Length);
-		//pBuffer.SetData(p);
+		pBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(x.Length);
 
-		stretchingIDsBuffer = ComputeHelper.CreateStructuredBuffer<float>(stretchingIDs.Length);
-		stretchingIDsBuffer.SetData(stretchingIDs);
+		clothCompute.SetBuffer(updateVelocityKernel, "x", xBuffer);
+		clothCompute.SetBuffer(updateVelocityKernel, "v", vBuffer);
+		clothCompute.SetBuffer(updateVelocityKernel, "w", wBuffer);
+		clothCompute.SetBuffer(updateVelocityKernel, "p", pBuffer);
 
-		bendingIDsBuffer = ComputeHelper.CreateStructuredBuffer<float>(bendingIDs.Length);
-		bendingIDsBuffer.SetData(bendingIDs);
+		clothCompute.SetBuffer(predictPositionKernel, "x", xBuffer);
+		clothCompute.SetBuffer(predictPositionKernel, "v", vBuffer);
+		clothCompute.SetBuffer(predictPositionKernel, "w", wBuffer);
+		clothCompute.SetBuffer(predictPositionKernel, "p", pBuffer);
 
-		restPosBuffer = ComputeHelper.CreateStructuredBuffer<float>(restPos.Length);
-		restPosBuffer.SetData(restPos);
+		clothCompute.SetBuffer(solveStretchingKernel, "w", wBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel, "p", pBuffer);
 
-		dihedral0Buffer = ComputeHelper.CreateStructuredBuffer<float>(dihedral0.Length);
-		dihedral0Buffer.SetData(dihedral0);
+		clothCompute.SetBuffer(solveBendingKernel, "w", wBuffer);
+		clothCompute.SetBuffer(solveBendingKernel, "p", pBuffer);
 
-		//clothCompute.SetBuffer("x", xBuffer);
-		#endregion
+		d0Buffers = new ComputeBuffer[d0.Length];
+		stretchingIDsBuffers = new ComputeBuffer[stretchingIDs.Length];
+		for (int i = 0; i < d0.Length; i++) {
+			d0Buffers[i] = ComputeHelper.CreateStructuredBuffer<float>(d0[i].Length);
+			d0Buffers[i].SetData(d0[i]);
+
+			stretchingIDsBuffers[i] = ComputeHelper.CreateStructuredBuffer<int>(stretchingIDs[i].Length);
+			stretchingIDsBuffers[i].SetData(stretchingIDs[i]);
+		}
+
+		dihedral0Buffers = new ComputeBuffer[dihedral0.Length];
+		bendingIDsBuffers = new ComputeBuffer[bendingIDs.Length];
+		for (int i = 0; i < dihedral0.Length; i++) {
+			dihedral0Buffers[i] = ComputeHelper.CreateStructuredBuffer<float>(dihedral0[i].Length);
+			dihedral0Buffers[i].SetData(dihedral0[i]);
+
+			bendingIDsBuffers[i] = ComputeHelper.CreateStructuredBuffer<int>(bendingIDs[i].Length);
+			bendingIDsBuffers[i].SetData(bendingIDs[i]);
+		}
 	}
 
 	private int[] FindTriNeighbors(int[] tris) {
@@ -626,8 +851,22 @@ public class ClothSimulation : MonoBehaviour
 		Release();
 	}
 
+	private void OnDisable() {
+		//Release();
+	}
+
+	private void OnEnable() {
+		/*if (isInitialized) {
+			CreateBuffers();
+		}*/
+	}
+
 	void Release() {
-		ComputeHelper.Release(xBuffer, vBuffer, wBuffer, pBuffer, stretchingIDsBuffer, bendingIDsBuffer, restPosBuffer, dihedral0Buffer);
+		ComputeHelper.Release(xBuffer, vBuffer, wBuffer, pBuffer);
+		ComputeHelper.Release(stretchingIDsBuffers);
+		ComputeHelper.Release(d0Buffers);
+		ComputeHelper.Release(bendingIDsBuffers);
+		ComputeHelper.Release(dihedral0Buffers);
 	}
 }
 

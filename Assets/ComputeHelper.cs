@@ -25,7 +25,7 @@ public static class ComputeHelper
 		Vector3Int threadGroupSizes = GetThreadGroupSizes(cs, kernelIndex);
 		int numGroupsX = Mathf.CeilToInt(numIterationsX / (float)threadGroupSizes.x);
 		int numGroupsY = Mathf.CeilToInt(numIterationsY / (float)threadGroupSizes.y);
-		int numGroupsZ = Mathf.CeilToInt(numIterationsZ / (float)threadGroupSizes.y);
+		int numGroupsZ = Mathf.CeilToInt(numIterationsZ / (float)threadGroupSizes.z);
 		cs.Dispatch(kernelIndex, numGroupsX, numGroupsY, numGroupsZ);
 	}
 
@@ -147,6 +147,25 @@ public static class ComputeHelper
 
 	}
 
+	// Read data in append buffer to array
+	// Note: this is very slow as it reads the data from the GPU to the CPU
+	public static void ReadDataFromBuffer<T>(ComputeBuffer buffer, T[] data, bool isAppendBuffer) {
+		int numElements = buffer.count;
+		if (isAppendBuffer) {
+			// Get number of elements in append buffer
+			ComputeBuffer sizeBuffer = new ComputeBuffer(1, sizeof(int), ComputeBufferType.IndirectArguments);
+			ComputeBuffer.CopyCount(buffer, sizeBuffer, 0);
+			int[] bufferCountData = new int[1];
+			sizeBuffer.GetData(bufferCountData);
+			numElements = bufferCountData[0];
+			Release(sizeBuffer);
+		}
+
+		// Read data from append buffer
+		buffer.GetData(data);
+
+	}
+
 	public static void ResetAppendBuffer(ComputeBuffer appendBuffer)
 	{
 		appendBuffer.SetCounterValue(0);
@@ -155,11 +174,11 @@ public static class ComputeHelper
 	/// Releases supplied buffer/s if not null
 	public static void Release(params ComputeBuffer[] buffers)
 	{
-		for (int i = 0; i < buffers.Length; i++)
-		{
-			if (buffers[i] != null)
-			{
-				buffers[i].Release();
+		if (buffers != null) {
+			for (int i = 0; i < buffers.Length; i++) {
+				if (buffers[i] != null) {
+					buffers[i].Release();
+				}
 			}
 		}
 	}
