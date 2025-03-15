@@ -36,11 +36,8 @@ float stretchingAlpha;
 float bendingAlpha;
 uint projectionIterations;
 
-[numthreads(128, 1, 1)]
-void UpdateVelocity (uint3 id : SV_DispatchThreadID)
+int GetClothIndex(uint3 id)
 {
-    //if (id.x >= numVertices)
-    //    return;
     int clothIndex = 0;
     if (numCloths > 1)
     {
@@ -57,6 +54,16 @@ void UpdateVelocity (uint3 id : SV_DispatchThreadID)
         }
     }
     
+    return clothIndex;
+}
+
+[numthreads(128, 1, 1)]
+void UpdateVelocity (uint3 id : SV_DispatchThreadID)
+{
+    //if (id.x >= numVertices)
+    //    return;
+    int clothIndex = GetClothIndex(id);
+    
     v[id.x] = (p[id.x] - x[id.x] + (w[id.x] == 0 ? 0.0f : 1.0f) * stepVelocity[clothIndex]) / dt_step;
     v[id.x] *= (1 - damping / numSubsteps); // Damp Velocities
     x[id.x] = p[id.x];
@@ -67,21 +74,7 @@ void PredictPosition (uint3 id : SV_DispatchThreadID)
 {
     //if (id.x >= numVertices)
     //    return;
-    int clothIndex = 0;
-    if (numCloths > 1)
-    {
-        for (int j = 1; j < numCloths; j++)
-        {
-            if (id.x >= startIndex[j])
-            {
-                clothIndex = j;
-            }
-            else
-            {
-                break;
-            }
-        }
-    }
+    int clothIndex = GetClothIndex(id);
     
     v[id.x] += dt_step * w[id.x] * (gravityVector[clothIndex] + windVector[clothIndex]); // Applies gravity and wind
 

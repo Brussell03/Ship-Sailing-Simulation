@@ -179,6 +179,7 @@ public class ClothSimulation : MonoBehaviour
 		x = ComputeHelper.ReadDataFromBuffer<Vector3>(xBuffer, x, isAppendBuffer: false);*/
 		mesh.vertices = x;
 		mesh.RecalculateBounds();
+		//mesh.Optimize();
 	}
 
 	private void SolveStretching(float compliance, float dt, Vector3[] p) {
@@ -350,10 +351,24 @@ public class ClothSimulation : MonoBehaviour
 			}
 		}*/
 
-		w[0] = 0;
-		w[subdivisions] = 0;
-		w[w.Length - 1] = 0;
-		w[w.Length - 1 - subdivisions] = 0;
+		//w[0] = 0;
+		int attachmentLength = subdivisions / 20;
+		attachmentLength = attachmentLength == 0 ? 1 : attachmentLength;
+		for (int i = 0; i < attachmentLength; i++) {
+			w[i] = 0;
+		}
+		for (int i = subdivisions; i > subdivisions - attachmentLength; i--) {
+			w[i] = 0;
+		}
+		for (int i = w.Length - 1; i > w.Length - 1 - attachmentLength; i--) {
+			w[i] = 0;
+		}
+		for (int i = w.Length - 1 - subdivisions; i < w.Length - 1 - subdivisions + attachmentLength; i++) {
+			w[i] = 0;
+		}
+		//w[subdivisions] = 0;
+		//w[w.Length - 1] = 0;
+		//w[w.Length - 1 - subdivisions] = 0;
 		
 		//w[w.Length / 2 + subdivisions / 2] = 0;
 

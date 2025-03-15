@@ -287,7 +287,7 @@ MonoBehaviour:
   projectionIterations: 3
   width: 10
   height: 10
-  subdivisions: 120
+  subdivisions: 200
   clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
   damping: 0.03
   drawGraphColoring: 0
@@ -1703,7 +1703,7 @@ MonoBehaviour:
   projectionIterations: 3
   width: 10
   height: 10
-  subdivisions: 120
+  subdivisions: 200
   clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
   damping: 0.03
   drawGraphColoring: 0
@@ -3406,7 +3406,7 @@ MonoBehaviour:
   projectionIterations: 3
   width: 10
   height: 10
-  subdivisions: 120
+  subdivisions: 200
   clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
   damping: 0.03
   drawGraphColoring: 0
@@ -3543,7 +3543,7 @@ MonoBehaviour:
   projectionIterations: 3
   width: 10
   height: 10
-  subdivisions: 120
+  subdivisions: 200
   clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
   damping: 0.03
   drawGraphColoring: 0
@@ -4238,12 +4238,12 @@ MonoBehaviour:
   - {fileID: 71826976}
   - {fileID: 1755658873}
   clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
-  stretchingCompliance: 0.0000013
-  bendingCompliance: 0.17
+  stretchingCompliance: 0
+  bendingCompliance: 0
   density: 10
   substeps: 10
   thickness: 0.004
-  windSpeed: 25.4
+  windSpeed: 24.3
   handleCollisions: 0
   applyGravity: 1
   applyWind: 1
@@ -5474,7 +5474,7 @@ MonoBehaviour:
   projectionIterations: 3
   width: 10
   height: 10
-  subdivisions: 120
+  subdivisions: 200
   clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
   damping: 0.03
   drawGraphColoring: 0
@@ -6125,7 +6125,7 @@ MonoBehaviour:
   projectionIterations: 3
   width: 10
   height: 10
-  subdivisions: 120
+  subdivisions: 200
   clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
   damping: 0.03
   drawGraphColoring: 0

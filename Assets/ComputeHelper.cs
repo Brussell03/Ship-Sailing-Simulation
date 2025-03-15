@@ -2,6 +2,7 @@
 using UnityEngine.Experimental.Rendering;
 using ComputeShaderUtility;
 using System.Collections.Generic;
+using Unity.Collections;
 
 // This class contains some helper functions to make life a little easier working with compute shaders
 // (Very work-in-progress!)
