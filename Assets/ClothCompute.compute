@@ -26,14 +26,14 @@ StructuredBuffer<float3> stepVelocity;
 StructuredBuffer<float3> gravityVector;
 StructuredBuffer<float3> windVector;
 StructuredBuffer<int> startIndex;
-uint numSubsteps;
-uint numVertices;
+StructuredBuffer<int> substeps;
+StructuredBuffer<float> stretchingAlpha;
+StructuredBuffer<float> bendingAlpha;
+StructuredBuffer<float> stepTime;
+StructuredBuffer<float> damping;
+StructuredBuffer<float> maxVelocity;
+uint globalSubstep;
 uint numCloths;
-float dt_step;
-float damping;
-float maxVelocity;
-float stretchingAlpha;
-float bendingAlpha;
 uint projectionIterations;
 
 int GetClothIndex(uint3 id)
@@ -63,9 +63,11 @@ void UpdateVelocity (uint3 id : SV_DispatchThreadID)
     //if (id.x >= numVertices)
     //    return;
     int clothIndex = GetClothIndex(id);
+    if (globalSubstep >= substeps[clothIndex])
+        return;
     
-    v[id.x] = (p[id.x] - x[id.x] + (w[id.x] == 0 ? 0.0f : 1.0f) * stepVelocity[clothIndex]) / dt_step;
-    v[id.x] *= (1 - damping / numSubsteps); // Damp Velocities
+    v[id.x] = (p[id.x] - x[id.x] + (w[id.x] == 0 ? 0.0f : 1.0f) * stepVelocity[clothIndex]) / stepTime[clothIndex];
+    v[id.x] *= (1 - damping[clothIndex] / substeps[clothIndex]); // Damp Velocities
     x[id.x] = p[id.x];
 }
 
@@ -75,17 +77,19 @@ void PredictPosition (uint3 id : SV_DispatchThreadID)
     //if (id.x >= numVertices)
     //    return;
     int clothIndex = GetClothIndex(id);
+    if (globalSubstep >= substeps[clothIndex])
+        return;
     
-    v[id.x] += dt_step * w[id.x] * (gravityVector[clothIndex] + windVector[clothIndex]); // Applies gravity and wind
+    v[id.x] += stepTime[clothIndex] * w[id.x] * (gravityVector[clothIndex] + windVector[clothIndex]); // Applies gravity and wind
 
     float sqrMagnitude = dot(v[id.x], v[id.x]);
-    if (sqrMagnitude > maxVelocity * maxVelocity)
+    if (sqrMagnitude > maxVelocity[clothIndex] * maxVelocity[clothIndex])
     {
-        v[id.x] = ((sqrMagnitude > 0.0f) ? (v[id.x] / sqrt(sqrMagnitude)) : float3(0.0f, 0.0f, 0.0f)) * maxVelocity;
+        v[id.x] = ((sqrMagnitude > 0.0f) ? (v[id.x] / sqrt(sqrMagnitude)) : float3(0.0f, 0.0f, 0.0f)) * maxVelocity[clothIndex];
         //v[id.x] = v[id.x] * maxVelocity;
     }
 
-    p[id.x] = x[id.x] + dt_step * v[id.x] - (w[id.x] == 0 ? 0.0f : 1.0f) * stepVelocity[clothIndex];
+    p[id.x] = x[id.x] + stepTime[clothIndex] * v[id.x] - (w[id.x] == 0 ? 0.0f : 1.0f) * stepVelocity[clothIndex];
 }
 
 [numthreads(128, 1, 1)]
@@ -94,7 +98,13 @@ void SolveStretchingBatch1(uint3 id : SV_DispatchThreadID)
     //if (id.x >= numVertices)
     //    return;
     
+    
     int id0 = stretchingIDs[id.x * 2];
+    
+    int clothIndex = GetClothIndex(id0);
+    if (globalSubstep >= substeps[clothIndex])
+        return;
+    
     int id1 = stretchingIDs[id.x * 2 + 1];
     float w0 = w[id0];
     float w1 = w[id1];
@@ -113,7 +123,7 @@ void SolveStretchingBatch1(uint3 id : SV_DispatchThreadID)
             return;
 
         float C = len - d0[id.x];
-        float s = -C / (wT + stretchingAlpha);
+        float s = -C / (wT + stretchingAlpha[clothIndex]);
 
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -131,6 +141,11 @@ void SolveStretchingBatch2(uint3 id : SV_DispatchThreadID)
     //    return;
     
     int id0 = stretchingIDs[id.x * 2];
+    
+    int clothIndex = GetClothIndex(id0);
+    if (globalSubstep >= substeps[clothIndex])
+        return;
+    
     int id1 = stretchingIDs[id.x * 2 + 1];
     float w0 = w[id0];
     float w1 = w[id1];
@@ -149,7 +164,7 @@ void SolveStretchingBatch2(uint3 id : SV_DispatchThreadID)
             return;
 
         float C = len - d0[id.x];
-        float s = -C / (wT + stretchingAlpha);
+        float s = -C / (wT + stretchingAlpha[clothIndex]);
 
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -167,6 +182,11 @@ void SolveStretchingBatch3(uint3 id : SV_DispatchThreadID)
     //    return;
     
     int id0 = stretchingIDs[id.x * 2];
+    
+    int clothIndex = GetClothIndex(id0);
+    if (globalSubstep >= substeps[clothIndex])
+        return;
+    
     int id1 = stretchingIDs[id.x * 2 + 1];
     float w0 = w[id0];
     float w1 = w[id1];
@@ -185,7 +205,7 @@ void SolveStretchingBatch3(uint3 id : SV_DispatchThreadID)
             return;
 
         float C = len - d0[id.x];
-        float s = -C / (wT + stretchingAlpha);
+        float s = -C / (wT + stretchingAlpha[clothIndex]);
 
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -203,6 +223,11 @@ void SolveStretchingBatch4(uint3 id : SV_DispatchThreadID)
     //    return;
     
     int id0 = stretchingIDs[id.x * 2];
+    
+    int clothIndex = GetClothIndex(id0);
+    if (globalSubstep >= substeps[clothIndex])
+        return;
+    
     int id1 = stretchingIDs[id.x * 2 + 1];
     float w0 = w[id0];
     float w1 = w[id1];
@@ -221,7 +246,7 @@ void SolveStretchingBatch4(uint3 id : SV_DispatchThreadID)
             return;
 
         float C = len - d0[id.x];
-        float s = -C / (wT + stretchingAlpha);
+        float s = -C / (wT + stretchingAlpha[clothIndex]);
 
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -239,6 +264,11 @@ void SolveStretchingBatch5(uint3 id : SV_DispatchThreadID)
     //    return;
     
     int id0 = stretchingIDs[id.x * 2];
+    
+    int clothIndex = GetClothIndex(id0);
+    if (globalSubstep >= substeps[clothIndex])
+        return;
+    
     int id1 = stretchingIDs[id.x * 2 + 1];
     float w0 = w[id0];
     float w1 = w[id1];
@@ -257,7 +287,7 @@ void SolveStretchingBatch5(uint3 id : SV_DispatchThreadID)
             return;
 
         float C = len - d0[id.x];
-        float s = -C / (wT + stretchingAlpha);
+        float s = -C / (wT + stretchingAlpha[clothIndex]);
 
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -275,6 +305,11 @@ void SolveStretchingBatch6(uint3 id : SV_DispatchThreadID)
     //    return;
     
     int id0 = stretchingIDs[id.x * 2];
+    
+    int clothIndex = GetClothIndex(id0);
+    if (globalSubstep >= substeps[clothIndex])
+        return;
+    
     int id1 = stretchingIDs[id.x * 2 + 1];
     float w0 = w[id0];
     float w1 = w[id1];
@@ -293,7 +328,7 @@ void SolveStretchingBatch6(uint3 id : SV_DispatchThreadID)
             return;
 
         float C = len - d0[id.x];
-        float s = -C / (wT + stretchingAlpha);
+        float s = -C / (wT + stretchingAlpha[clothIndex]);
 
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -311,6 +346,11 @@ void SolveBendingBatch1(uint3 id : SV_DispatchThreadID)
     //    return;
     
     int id2 = bendingIDs[id.x * 4 + 2];
+    
+    int clothIndex = GetClothIndex(id2);
+    if (globalSubstep >= substeps[clothIndex])
+        return;
+    
     int id3 = bendingIDs[id.x * 4 + 3];
 
     float w0 = w[id2];
@@ -330,7 +370,7 @@ void SolveBendingBatch1(uint3 id : SV_DispatchThreadID)
             return;
 
         float C = len - dihedral0[id.x];
-        float s = -C / (wT + bendingAlpha);
+        float s = -C / (wT + bendingAlpha[clothIndex]);
     
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -348,6 +388,11 @@ void SolveBendingBatch2(uint3 id : SV_DispatchThreadID)
     //    return;
     
     int id2 = bendingIDs[id.x * 4 + 2];
+    
+    int clothIndex = GetClothIndex(id2);
+    if (globalSubstep >= substeps[clothIndex])
+        return;
+    
     int id3 = bendingIDs[id.x * 4 + 3];
 
     float w0 = w[id2];
@@ -367,7 +412,7 @@ void SolveBendingBatch2(uint3 id : SV_DispatchThreadID)
             return;
 
         float C = len - dihedral0[id.x];
-        float s = -C / (wT + bendingAlpha);
+        float s = -C / (wT + bendingAlpha[clothIndex]);
     
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -385,6 +430,11 @@ void SolveBendingBatch3(uint3 id : SV_DispatchThreadID)
     //    return;
     
     int id2 = bendingIDs[id.x * 4 + 2];
+    
+    int clothIndex = GetClothIndex(id2);
+    if (globalSubstep >= substeps[clothIndex])
+        return;
+    
     int id3 = bendingIDs[id.x * 4 + 3];
 
     float w0 = w[id2];
@@ -404,7 +454,7 @@ void SolveBendingBatch3(uint3 id : SV_DispatchThreadID)
             return;
 
         float C = len - dihedral0[id.x];
-        float s = -C / (wT + bendingAlpha);
+        float s = -C / (wT + bendingAlpha[clothIndex]);
     
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -422,6 +472,11 @@ void SolveBendingBatch4(uint3 id : SV_DispatchThreadID)
     //    return;
     
     int id2 = bendingIDs[id.x * 4 + 2];
+    
+    int clothIndex = GetClothIndex(id2);
+    if (globalSubstep >= substeps[clothIndex])
+        return;
+    
     int id3 = bendingIDs[id.x * 4 + 3];
 
     float w0 = w[id2];
@@ -441,7 +496,7 @@ void SolveBendingBatch4(uint3 id : SV_DispatchThreadID)
             return;
 
         float C = len - dihedral0[id.x];
-        float s = -C / (wT + bendingAlpha);
+        float s = -C / (wT + bendingAlpha[clothIndex]);
     
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -459,6 +514,11 @@ void SolveBendingBatch5(uint3 id : SV_DispatchThreadID)
     //    return;
     
     int id2 = bendingIDs[id.x * 4 + 2];
+    
+    int clothIndex = GetClothIndex(id2);
+    if (globalSubstep >= substeps[clothIndex])
+        return;
+    
     int id3 = bendingIDs[id.x * 4 + 3];
 
     float w0 = w[id2];
@@ -478,7 +538,7 @@ void SolveBendingBatch5(uint3 id : SV_DispatchThreadID)
             return;
 
         float C = len - dihedral0[id.x];
-        float s = -C / (wT + bendingAlpha);
+        float s = -C / (wT + bendingAlpha[clothIndex]);
     
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -496,6 +556,11 @@ void SolveBendingBatch6(uint3 id : SV_DispatchThreadID)
     //    return;
     
     int id2 = bendingIDs[id.x * 4 + 2];
+    
+    int clothIndex = GetClothIndex(id2);
+    if (globalSubstep >= substeps[clothIndex])
+        return;
+    
     int id3 = bendingIDs[id.x * 4 + 3];
 
     float w0 = w[id2];
@@ -515,7 +580,7 @@ void SolveBendingBatch6(uint3 id : SV_DispatchThreadID)
             return;
 
         float C = len - dihedral0[id.x];
-        float s = -C / (wT + bendingAlpha);
+        float s = -C / (wT + bendingAlpha[clothIndex]);
     
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;

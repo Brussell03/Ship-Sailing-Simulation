@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 6335.3975, g: 10469.743, b: 15030.174, a: 1}
+  m_IndirectSpecularColor: {r: 6327.1543, g: 10452.497, b: 15010.786, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -188,7 +188,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!64 &28639664
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -275,8 +275,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 46015c7a1a91d924287d924a0711dd53, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  stretchingCompliance: 0.0000005
-  bendingCompliance: 0.05
+  stretchingCompliance: 0
+  bendingCompliance: 0
   density: 10
   substeps: 10
   thickness: 0.004
@@ -325,7 +325,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!64 &71826973
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -412,8 +412,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 46015c7a1a91d924287d924a0711dd53, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  stretchingCompliance: 0.0000005
-  bendingCompliance: 0.05
+  stretchingCompliance: 0
+  bendingCompliance: 0
   density: 10
   substeps: 10
   thickness: 0.004
@@ -971,7 +971,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!64 &281285949
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -1058,8 +1058,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 46015c7a1a91d924287d924a0711dd53, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  stretchingCompliance: 0.0000005
-  bendingCompliance: 0.05
+  stretchingCompliance: 0
+  bendingCompliance: 0
   density: 10
   substeps: 10
   thickness: 0.004
@@ -1604,7 +1604,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!64 &585573688
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -1691,8 +1691,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 46015c7a1a91d924287d924a0711dd53, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  stretchingCompliance: 0.0000005
-  bendingCompliance: 0.05
+  stretchingCompliance: 0
+  bendingCompliance: 0
   density: 10
   substeps: 10
   thickness: 0.004
@@ -3170,7 +3170,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!64 &909315304
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -3257,8 +3257,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 46015c7a1a91d924287d924a0711dd53, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  stretchingCompliance: 0.0000005
-  bendingCompliance: 0.05
+  stretchingCompliance: 0
+  bendingCompliance: 0
   density: 10
   substeps: 10
   thickness: 0.004
@@ -3307,7 +3307,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!64 &967065569
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -3394,8 +3394,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 46015c7a1a91d924287d924a0711dd53, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  stretchingCompliance: 0.0000005
-  bendingCompliance: 0.05
+  stretchingCompliance: 0
+  bendingCompliance: 0
   density: 10
   substeps: 10
   thickness: 0.004
@@ -3444,7 +3444,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!64 &990898601
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -3531,8 +3531,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 46015c7a1a91d924287d924a0711dd53, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  stretchingCompliance: 0.0000005
-  bendingCompliance: 0.05
+  stretchingCompliance: 0
+  bendingCompliance: 0
   density: 10
   substeps: 10
   thickness: 0.004
@@ -3969,7 +3969,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!64 &1197041363
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -4056,8 +4056,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 46015c7a1a91d924287d924a0711dd53, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  stretchingCompliance: 0.0000005
-  bendingCompliance: 0.05
+  stretchingCompliance: 0
+  bendingCompliance: 0
   density: 10
   substeps: 10
   thickness: 0.004
@@ -4238,17 +4238,8 @@ MonoBehaviour:
   - {fileID: 71826976}
   - {fileID: 1755658873}
   clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
-  stretchingCompliance: 0
-  bendingCompliance: 0
-  density: 10
-  substeps: 10
-  thickness: 0.004
   windSpeed: 24.3
-  handleCollisions: 0
-  applyGravity: 1
-  applyWind: 1
   projectionIterations: 3
-  damping: 0.03
 --- !u!1 &1328296276
 GameObject:
   m_ObjectHideFlags: 0
@@ -5462,10 +5453,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 46015c7a1a91d924287d924a0711dd53, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  stretchingCompliance: 0.0000005
-  bendingCompliance: 0.05
+  stretchingCompliance: 0
+  bendingCompliance: 0
   density: 10
-  substeps: 10
+  substeps: 3
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -5586,7 +5577,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!64 &1755658870
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -5673,8 +5664,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 46015c7a1a91d924287d924a0711dd53, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  stretchingCompliance: 0.0000005
-  bendingCompliance: 0.05
+  stretchingCompliance: 0
+  bendingCompliance: 0
   density: 10
   substeps: 10
   thickness: 0.004
@@ -6113,10 +6104,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 46015c7a1a91d924287d924a0711dd53, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  stretchingCompliance: 0.0000005
-  bendingCompliance: 0.05
+  stretchingCompliance: 0
+  bendingCompliance: 0
   density: 10
-  substeps: 10
+  substeps: 3
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -6258,7 +6249,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!64 &2005198577
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -6345,8 +6336,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 46015c7a1a91d924287d924a0711dd53, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  stretchingCompliance: 0.0000005
-  bendingCompliance: 0.05
+  stretchingCompliance: 0
+  bendingCompliance: 0
   density: 10
   substeps: 10
   thickness: 0.004
