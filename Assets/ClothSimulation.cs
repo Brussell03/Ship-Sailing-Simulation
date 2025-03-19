@@ -179,6 +179,8 @@ public class ClothSimulation : MonoBehaviour
 		x = ComputeHelper.ReadDataFromBuffer<Vector3>(xBuffer, x, isAppendBuffer: false);*/
 		mesh.vertices = x;
 		mesh.RecalculateBounds();
+		//mesh.RecalculateNormals();
+		//meshCollider.sharedMesh = mesh;
 		//mesh.Optimize();
 	}
 

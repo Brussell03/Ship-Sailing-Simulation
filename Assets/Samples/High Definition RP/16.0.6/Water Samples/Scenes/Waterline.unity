@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 6327.1543, g: 10452.497, b: 15010.786, a: 1}
+  m_IndirectSpecularColor: {r: 6335.3975, g: 10469.743, b: 15030.174, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -278,7 +278,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 10
+  substeps: 5
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -287,7 +287,7 @@ MonoBehaviour:
   projectionIterations: 3
   width: 10
   height: 10
-  subdivisions: 200
+  subdivisions: 120
   clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
   damping: 0.03
   drawGraphColoring: 0
@@ -325,7 +325,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!64 &71826973
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -971,7 +971,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!64 &281285949
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -1604,7 +1604,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!64 &585573688
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -1694,7 +1694,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 10
+  substeps: 5
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -1703,7 +1703,7 @@ MonoBehaviour:
   projectionIterations: 3
   width: 10
   height: 10
-  subdivisions: 200
+  subdivisions: 120
   clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
   damping: 0.03
   drawGraphColoring: 0
@@ -3170,7 +3170,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!64 &909315304
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -3260,7 +3260,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 10
+  substeps: 8
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -3307,7 +3307,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!64 &967065569
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -3397,7 +3397,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 10
+  substeps: 5
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -3406,7 +3406,7 @@ MonoBehaviour:
   projectionIterations: 3
   width: 10
   height: 10
-  subdivisions: 200
+  subdivisions: 120
   clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
   damping: 0.03
   drawGraphColoring: 0
@@ -3444,7 +3444,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!64 &990898601
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -3534,7 +3534,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 10
+  substeps: 5
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -3543,7 +3543,7 @@ MonoBehaviour:
   projectionIterations: 3
   width: 10
   height: 10
-  subdivisions: 200
+  subdivisions: 120
   clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
   damping: 0.03
   drawGraphColoring: 0
@@ -3969,7 +3969,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!64 &1197041363
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -4059,7 +4059,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 10
+  substeps: 8
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -5456,7 +5456,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 3
+  substeps: 10
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -5465,7 +5465,7 @@ MonoBehaviour:
   projectionIterations: 3
   width: 10
   height: 10
-  subdivisions: 200
+  subdivisions: 120
   clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
   damping: 0.03
   drawGraphColoring: 0
@@ -5577,7 +5577,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!64 &1755658870
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -5768,6 +5768,113 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: a13af4876f85c994c975f5f3dcfdf5a0, type: 3}
+--- !u!1 &1838087027
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1838087031}
+  - component: {fileID: 1838087030}
+  - component: {fileID: 1838087029}
+  - component: {fileID: 1838087028}
+  m_Layer: 0
+  m_Name: Sphere (1)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!135 &1838087028
+SphereCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1838087027}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Radius: 0.5
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!23 &1838087029
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1838087027}
+  m_Enabled: 1
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RayTracingAccelStructBuildFlagsOverride: 0
+  m_RayTracingAccelStructBuildFlags: 1
+  m_RenderingLayerMask: 257
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: 73c176f402d2c2f4d929aa5da7585d17, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 0
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_AdditionalVertexStreams: {fileID: 0}
+--- !u!33 &1838087030
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1838087027}
+  m_Mesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!4 &1838087031
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1838087027}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 5, y: 12, z: 1.57}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1852130367
 GameObject:
   m_ObjectHideFlags: 0
@@ -6107,7 +6214,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 7
+  substeps: 5
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -6116,7 +6223,7 @@ MonoBehaviour:
   projectionIterations: 3
   width: 10
   height: 10
-  subdivisions: 200
+  subdivisions: 120
   clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
   damping: 0.03
   drawGraphColoring: 0
@@ -6249,7 +6356,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!64 &2005198577
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -6339,7 +6446,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 10
+  substeps: 8
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -6771,13 +6878,14 @@ GameObject:
   - component: {fileID: 2023903640}
   - component: {fileID: 2023903639}
   - component: {fileID: 2023903638}
+  - component: {fileID: 2023903642}
   m_Layer: 0
   m_Name: Sphere
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!135 &2023903638
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -6860,12 +6968,39 @@ Transform:
   m_GameObject: {fileID: 2023903637}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 5, y: 12, z: 0}
+  m_LocalPosition: {x: 3.18, y: 12, z: 1.87}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!54 &2023903642
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2023903637}
+  serializedVersion: 4
+  m_Mass: 1
+  m_Drag: 0
+  m_AngularDrag: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 1
+  m_IsKinematic: 0
+  m_Interpolate: 0
+  m_Constraints: 0
+  m_CollisionDetection: 0
 --- !u!1001 &2071822516
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -6994,18 +7129,19 @@ SceneRoots:
   - {fileID: 348095428}
   - {fileID: 394532430}
   - {fileID: 1705595098}
-  - {fileID: 909315308}
-  - {fileID: 585573692}
-  - {fileID: 2005198581}
   - {fileID: 1877092634}
-  - {fileID: 1197041367}
-  - {fileID: 967065573}
-  - {fileID: 71826977}
   - {fileID: 28639668}
-  - {fileID: 1755658874}
+  - {fileID: 585573692}
+  - {fileID: 967065573}
   - {fileID: 990898605}
+  - {fileID: 909315308}
+  - {fileID: 2005198581}
+  - {fileID: 1197041367}
+  - {fileID: 71826977}
+  - {fileID: 1755658874}
   - {fileID: 281285953}
   - {fileID: 2023903641}
+  - {fileID: 1838087031}
   - {fileID: 995375121}
   - {fileID: 407992927}
   - {fileID: 1221752887}
