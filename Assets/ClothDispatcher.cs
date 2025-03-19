@@ -72,6 +72,9 @@ public class ClothDispatcher : MonoBehaviour
 	NativeArray<bool> handleCollisionsNative;
 	NativeArray<bool> applyGravityNative;
 	NativeArray<bool> applyWindNative;
+	NativeArray<int> numVertsPerSubstep;
+	NativeArray<int> numD0PerSubstep;
+	NativeArray<int> numDihedral0PerSubstep;
 	#endregion
 
 	Vector3[] x;
@@ -155,30 +158,35 @@ public class ClothDispatcher : MonoBehaviour
 		clothCompute.SetBuffer(predictPositionKernel, "gravityVector", gravityVectorBuffer);
 		clothCompute.SetBuffer(predictPositionKernel, "windVector", windVectorBuffer);
 
-		for (int step = 0; step < maxSubsteps; step++) {
-			clothCompute.SetInt("globalSubstep", step);
+		int step = 0;
+		for (int i = 0; i < substepsNative.Length; i++)
+		{
+			for (int j = 0; j < substepsNative[i] - (i != substepsNative.Length - 1 ? substepsNative[i + 1] : 0); j++) // EX: 10, 7, 3 --> loops 3, 4, 3 times
+			{
+				clothCompute.SetInt("globalSubstep", step++);
 
-			// Predict new positions
-			ComputeHelper.Dispatch(clothCompute, activeVerts, kernelIndex: predictPositionKernel);
+				// Predict new positions
+				ComputeHelper.Dispatch(clothCompute, activeVerts, kernelIndex: predictPositionKernel);
 
-			// Solve stretching constraint for each batch of edges
-			ComputeHelper.Dispatch(clothCompute, d0[0].Count, kernelIndex: solveStretchingKernel1);
-			ComputeHelper.Dispatch(clothCompute, d0[1].Count, kernelIndex: solveStretchingKernel2);
-			ComputeHelper.Dispatch(clothCompute, d0[2].Count, kernelIndex: solveStretchingKernel3);
-			ComputeHelper.Dispatch(clothCompute, d0[3].Count, kernelIndex: solveStretchingKernel4);
-			ComputeHelper.Dispatch(clothCompute, d0[4].Count, kernelIndex: solveStretchingKernel5);
-			ComputeHelper.Dispatch(clothCompute, d0[5].Count, kernelIndex: solveStretchingKernel6);
+				// Solve stretching constraint for each batch of edges
+				ComputeHelper.Dispatch(clothCompute, d0[0].Count, kernelIndex: solveStretchingKernel1);
+				ComputeHelper.Dispatch(clothCompute, d0[1].Count, kernelIndex: solveStretchingKernel2);
+				ComputeHelper.Dispatch(clothCompute, d0[2].Count, kernelIndex: solveStretchingKernel3);
+				ComputeHelper.Dispatch(clothCompute, d0[3].Count, kernelIndex: solveStretchingKernel4);
+				ComputeHelper.Dispatch(clothCompute, d0[4].Count, kernelIndex: solveStretchingKernel5);
+				ComputeHelper.Dispatch(clothCompute, d0[5].Count, kernelIndex: solveStretchingKernel6);
 
-			// Solve bending constraint for each batch of triangle pairs
-			ComputeHelper.Dispatch(clothCompute, dihedral0[0].Count, kernelIndex: solveBendingKernel1);
-			ComputeHelper.Dispatch(clothCompute, dihedral0[1].Count, kernelIndex: solveBendingKernel2);
-			ComputeHelper.Dispatch(clothCompute, dihedral0[2].Count, kernelIndex: solveBendingKernel3);
-			ComputeHelper.Dispatch(clothCompute, dihedral0[3].Count, kernelIndex: solveBendingKernel4);
-			ComputeHelper.Dispatch(clothCompute, dihedral0[4].Count, kernelIndex: solveBendingKernel5);
-			ComputeHelper.Dispatch(clothCompute, dihedral0[5].Count, kernelIndex: solveBendingKernel6);
+				// Solve bending constraint for each batch of triangle pairs
+				ComputeHelper.Dispatch(clothCompute, dihedral0[0].Count, kernelIndex: solveBendingKernel1);
+				ComputeHelper.Dispatch(clothCompute, dihedral0[1].Count, kernelIndex: solveBendingKernel2);
+				ComputeHelper.Dispatch(clothCompute, dihedral0[2].Count, kernelIndex: solveBendingKernel3);
+				ComputeHelper.Dispatch(clothCompute, dihedral0[3].Count, kernelIndex: solveBendingKernel4);
+				ComputeHelper.Dispatch(clothCompute, dihedral0[4].Count, kernelIndex: solveBendingKernel5);
+				ComputeHelper.Dispatch(clothCompute, dihedral0[5].Count, kernelIndex: solveBendingKernel6);
 
-			// Update velocities
-			ComputeHelper.Dispatch(clothCompute, activeVerts, kernelIndex: updateVelocityKernel);
+				// Update velocities
+				ComputeHelper.Dispatch(clothCompute, activeVerts, kernelIndex: updateVelocityKernel);
+			}
 		}
 
 		// Read new positions from GPU
@@ -282,6 +290,9 @@ public class ClothDispatcher : MonoBehaviour
 		handleCollisionsNative = new NativeArray<bool>(simulatedCloths.Count, Allocator.Persistent);
 		applyGravityNative = new NativeArray<bool>(simulatedCloths.Count, Allocator.Persistent);
 		applyWindNative = new NativeArray<bool>(simulatedCloths.Count, Allocator.Persistent);
+		numVertsPerSubstep = new NativeArray<int>(simulatedCloths.Count, Allocator.Persistent);
+		numD0PerSubstep = new NativeArray<int>(simulatedCloths.Count, Allocator.Persistent);
+		numDihedral0PerSubstep = new NativeArray<int>(simulatedCloths.Count, Allocator.Persistent);
 
 		for (int i = 0; i < stretchBatches; i++) {
 			d0[i].Clear();
@@ -293,9 +304,22 @@ public class ClothDispatcher : MonoBehaviour
 			bendingIDs[i].Clear();
 		};
 
-		for (int i = 0; i < simulatedCloths.Count; i++) {
-			lengthsNative[i] = cloths[simulatedCloths[i]].x.Length;
+		NativeArray<int> indices = new NativeArray<int>(simulatedCloths.Count, Allocator.Temp);
+		for (int i = 0; i < simulatedCloths.Count; i++)
+		{
+			indices[i] = i;
 			substepsNative[i] = cloths[simulatedCloths[i]].substeps;
+		}
+
+		// Sort the NativeArrays based on substeps
+		QuickSort(substepsNative, indices, 0, substepsNative.Length - 1);
+
+
+		//for (int i = 0; i < simulatedCloths.Count; i++) {
+		int count = 0;
+		foreach (int i in indices) {
+			lengthsNative[i] = cloths[simulatedCloths[i]].x.Length;
+			//substepsNative[i] = cloths[simulatedCloths[i]].substeps;
 			float dt_step = Time.fixedDeltaTime / substepsNative[i];
 			stretchingAlphaNative[i] = cloths[simulatedCloths[i]].stretchingCompliance / (dt_step * dt_step);
 			bendingAlphaNative[i] = cloths[simulatedCloths[i]].bendingCompliance / (dt_step * dt_step);
@@ -305,6 +329,12 @@ public class ClothDispatcher : MonoBehaviour
 			handleCollisionsNative[i] = cloths[simulatedCloths[i]].handleCollisions;
 			applyGravityNative[i] = cloths[simulatedCloths[i]].applyGravity;
 			applyWindNative[i] = cloths[simulatedCloths[i]].applyWind;
+
+			for (int j = count; j < simulatedCloths.Count; j++)
+			{
+				numVertsPerSubstep[count] += lengthsNative[j]; // ????
+			}
+			count++;
 
 			if (i == 0) {
 				startIndexNative[i] = 0;
@@ -344,6 +374,8 @@ public class ClothDispatcher : MonoBehaviour
 				}
 			}
 		}
+
+		if (indices.IsCreated) indices.Dispose();
 
 		maxSubsteps = Mathf.Max(substepsNative.ToArray());
 
@@ -511,6 +543,8 @@ public class ClothDispatcher : MonoBehaviour
 		clothCompute.SetBuffer(updateVelocityKernel, "stepTime", stepTimeBuffer);
 		clothCompute.SetBuffer(updateVelocityKernel, "damping", dampingBuffer);
 
+		Debug.Log("Substeps: " + substepsNative[0] + ", " + substepsNative[1]);
+
 		return true;
 	}
 
@@ -520,7 +554,8 @@ public class ClothDispatcher : MonoBehaviour
 	}
 
 	private void OnDisable() {
-		//Release();
+		Release();
+		DisposeNatives();
 	}
 
 	private void OnEnable() {
@@ -546,6 +581,9 @@ public class ClothDispatcher : MonoBehaviour
 		if (handleCollisionsNative.IsCreated) handleCollisionsNative.Dispose();
 		if (applyGravityNative.IsCreated) applyGravityNative.Dispose();
 		if (applyWindNative.IsCreated) applyWindNative.Dispose();
+		if (numVertsPerSubstep.IsCreated) numVertsPerSubstep.Dispose();
+		if (numD0PerSubstep.IsCreated) numD0PerSubstep.Dispose();
+		if (numDihedral0PerSubstep.IsCreated) numDihedral0PerSubstep.Dispose();
 	}
 
 	void Release() {
@@ -555,4 +593,45 @@ public class ClothDispatcher : MonoBehaviour
 		ComputeHelper.Release(bendingIDsBuffers);
 		ComputeHelper.Release(dihedral0Buffers);
 	}
+
+	#region Cloth Sort Sorting
+	void QuickSort(NativeArray<int> substeps, NativeArray<int> index, int low, int high)
+	{
+		if (low < high)
+		{
+			int pivotIndex = Partition(substeps, index, low, high);
+
+			QuickSort(substeps, index, low, pivotIndex - 1);
+			QuickSort(substeps, index, pivotIndex + 1, high);
+		}
+	}
+
+	int Partition(NativeArray<int> substeps, NativeArray<int> index, int low, int high)
+	{
+		int pivot = substeps[high];
+		int i = low - 1;
+
+		for (int j = low; j < high; j++)
+		{
+			if (substeps[j] >= pivot) // Sort in descending order
+			{
+				i++;
+				Swap(substeps, i, j);
+				Swap(index, i, j);
+			}
+		}
+
+		Swap(substeps, i + 1, high);
+		Swap(index, i + 1, high);
+
+		return i + 1;
+	}
+
+	void Swap<T>(NativeArray<T> array, int index1, int index2) where T : struct
+	{
+		T temp = array[index1];
+		array[index1] = array[index2];
+		array[index2] = temp;
+	}
+	#endregion
 }

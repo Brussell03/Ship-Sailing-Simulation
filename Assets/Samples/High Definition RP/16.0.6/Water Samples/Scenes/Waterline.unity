@@ -188,7 +188,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!64 &28639664
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -6107,7 +6107,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 3
+  substeps: 7
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
