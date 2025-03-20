@@ -13,10 +13,12 @@
 #pragma kernel SolveBendingBatch4
 #pragma kernel SolveBendingBatch5
 #pragma kernel SolveBendingBatch6
+#pragma kernel CalculateNormals
 
 RWStructuredBuffer<float3> x;
 RWStructuredBuffer<float3> v;
 RWStructuredBuffer<float3> p;
+RWStructuredBuffer<float3> normals;
 StructuredBuffer<float> w;
 StructuredBuffer<int> stretchingIDs;
 StructuredBuffer<int> bendingIDs;
@@ -33,6 +35,7 @@ StructuredBuffer<float> stepTime;
 StructuredBuffer<float> damping;
 StructuredBuffer<float> maxVelocity;
 uint globalSubstep;
+uint vertexCount;
 uint numCloths;
 uint projectionIterations;
 
@@ -589,4 +592,42 @@ void SolveBendingBatch6(uint3 id : SV_DispatchThreadID)
     
     p[id2] = p0;
     p[id3] = p1;
+}
+
+groupshared float3 neighborVertices[128]; // Example size, adjust as needed
+
+[numthreads(128, 1, 1)]
+void CalculateNormals(uint3 id : SV_DispatchThreadID, uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+    /*// Shared memory for neighboring vertices
+
+    // Load neighboring vertices into shared memory
+    int neighborIndex = id.x; //Example of a neighbor index.
+    if (neighborIndex >= 0 && neighborIndex < vertexCount)
+    {
+        neighborVertices[groupThreadId.x] = x[neighborIndex];
+    }
+
+    // Ensure all threads have loaded data
+    GroupMemoryBarrierWithGroupSync();*/
+
+    // Calculate normal using shared memory
+    float3 normal = float3(0.0f, 0.0f, 0.0f);
+    int neighborCount = 0;
+
+    // Approximate neighbors (example: assuming vertices are in a grid)
+    for (int i = -1; i <= 1; i++)
+    {
+        for (int j = -1; j <= 1; j++)
+        {
+            int neighborIndex = id.x + i + j * (int) sqrt((float) vertexCount); //Simplified grid neighbor access.
+            if (neighborIndex >= 0 && neighborIndex < vertexCount && neighborIndex != id.x)
+            {
+                normal += x[neighborIndex];
+                neighborCount++;
+            }
+        }
+    }
+
+    normals[id.x] = normalize(normal / neighborCount - x[id.x]);
 }

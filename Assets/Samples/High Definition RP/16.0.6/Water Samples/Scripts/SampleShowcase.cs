@@ -23,7 +23,7 @@ public class SampleShowcase : MonoBehaviour
     void Start()
     {
 #if UNITY_EDITOR
-        Selection.activeGameObject = gameObject; //So users see the inspector at scene load
+        //Selection.activeGameObject = gameObject; //So users see the inspector at scene load
 #endif
     }
 

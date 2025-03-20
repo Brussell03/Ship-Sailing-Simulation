@@ -278,7 +278,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 5
+  substeps: 10
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -415,7 +415,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 10
+  substeps: 8
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -1061,7 +1061,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 10
+  substeps: 4
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -1694,7 +1694,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 5
+  substeps: 10
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -3397,7 +3397,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 5
+  substeps: 10
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -3534,7 +3534,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 5
+  substeps: 10
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -4224,12 +4224,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ed4176d4fcaccd54f8f286a3f35ec336, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
+  windSpeed: 24.3
+  projectionIterations: 3
+  isSimulating: 1
   cloths:
   - {fileID: 1705595097}
   - {fileID: 1877092633}
   - {fileID: 28639667}
   - {fileID: 585573691}
-  - {fileID: 281285952}
   - {fileID: 967065572}
   - {fileID: 990898604}
   - {fileID: 909315307}
@@ -4237,9 +4240,7 @@ MonoBehaviour:
   - {fileID: 1197041366}
   - {fileID: 71826976}
   - {fileID: 1755658873}
-  clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
-  windSpeed: 24.3
-  projectionIterations: 3
+  - {fileID: 281285952}
 --- !u!1 &1328296276
 GameObject:
   m_ObjectHideFlags: 0
@@ -5667,7 +5668,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 10
+  substeps: 6
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
@@ -6214,7 +6215,7 @@ MonoBehaviour:
   stretchingCompliance: 0
   bendingCompliance: 0
   density: 10
-  substeps: 5
+  substeps: 10
   thickness: 0.004
   windSpeed: 10
   handleCollisions: 0
