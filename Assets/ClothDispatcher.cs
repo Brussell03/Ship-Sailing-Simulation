@@ -201,6 +201,7 @@ public class ClothDispatcher : MonoBehaviour
 		ComputeHelper.ReadDataFromBuffer(xBuffer, x, isAppendBuffer: false);
 		ComputeHelper.ReadDataFromBuffer(normalsBuffer, normals, isAppendBuffer: false);
 
+
 		// Update positions for each cloth
 		for (int i = 0; i < lengthsNative.Length; i++) {
 			// Copy specific cloth's positions from global position array

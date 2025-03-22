@@ -594,24 +594,12 @@ void SolveBendingBatch6(uint3 id : SV_DispatchThreadID)
     p[id3] = p1;
 }
 
-groupshared float3 neighborVertices[128]; // Example size, adjust as needed
-
 [numthreads(128, 1, 1)]
-void CalculateNormals(uint3 id : SV_DispatchThreadID, uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+void CalculateNormals(uint3 id : SV_DispatchThreadID)
 {
-    /*// Shared memory for neighboring vertices
-
-    // Load neighboring vertices into shared memory
-    int neighborIndex = id.x; //Example of a neighbor index.
-    if (neighborIndex >= 0 && neighborIndex < vertexCount)
-    {
-        neighborVertices[groupThreadId.x] = x[neighborIndex];
-    }
-
-    // Ensure all threads have loaded data
-    GroupMemoryBarrierWithGroupSync();*/
-
-    // Calculate normal using shared memory
+    if (id.x > vertexCount)
+        return;
+    
     float3 normal = float3(0.0f, 0.0f, 0.0f);
     int neighborCount = 0;
 
@@ -628,6 +616,10 @@ void CalculateNormals(uint3 id : SV_DispatchThreadID, uint3 groupId : SV_GroupID
             }
         }
     }
-
-    normals[id.x] = normalize(normal / neighborCount - x[id.x]);
+    
+    if (neighborCount > 0) {
+        normals[id.x] = normalize(normal / neighborCount - x[id.x]);
+    } else {
+        normals[id.x] = float3(0.0f, 1.0f, 0.0f); // Default normal if no neighbors.
+    }
 }

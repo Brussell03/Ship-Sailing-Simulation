@@ -185,6 +185,7 @@ public class ClothSimulation : MonoBehaviour
 		x = new Vector3[vertexCount];
 		v = new Vector3[vertexCount];
 		w = new float[vertexCount];
+		normals = new Vector3[vertexCount];
 		Vector2[] uv = new Vector2[vertexCount];
 
 		float wScale = 0.00001f;
