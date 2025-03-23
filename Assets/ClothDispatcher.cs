@@ -7,6 +7,7 @@ using Unity.Collections;
 using Unity.VisualScripting.FullSerializer;
 using UnityEngine;
 using Unity.Collections.LowLevel.Unsafe;
+using Unity.Mathematics;
 
 public class ClothDispatcher : MonoBehaviour
 {
@@ -35,7 +36,8 @@ public class ClothDispatcher : MonoBehaviour
 	const int solveBendingKernel4 = 11;
 	const int solveBendingKernel5 = 12;
 	const int solveBendingKernel6 = 13;
-	const int calculateNormals = 14;
+	const int calculateTriangleNormals = 14;
+	const int calculateVertexNormals = 15;
 	#endregion
 
 	#region Compute Buffers
@@ -58,6 +60,9 @@ public class ClothDispatcher : MonoBehaviour
 	ComputeBuffer[] bendingIDsBuffers;
 	ComputeBuffer[] stretchingIDsBuffers;
 	ComputeBuffer normalsBuffer;
+	ComputeBuffer trianglesBuffer;
+	ComputeBuffer vertexToTrianglesBuffer;
+	ComputeBuffer triangleNormalsBuffer;
 	#endregion
 
 	#region Native Arrays
@@ -78,6 +83,9 @@ public class ClothDispatcher : MonoBehaviour
 	NativeArray<int> numVertsPerSubstep;
 	NativeArray<int> sortedClothIndices;
 	NativeArray<Vector3> normalsNative;
+	NativeArray<int> trianglesNative;
+	NativeArray<int4> vertexToTrianglesNative;
+	NativeArray<Vector3> triangleNormalsNative;
 	#endregion
 
 	Vector3[] x;
@@ -195,12 +203,12 @@ public class ClothDispatcher : MonoBehaviour
 			}
 		}
 
-		ComputeHelper.Dispatch(clothCompute, activeVerts, kernelIndex: calculateNormals);
+		ComputeHelper.Dispatch(clothCompute, trianglesNative.Length, kernelIndex: calculateTriangleNormals);
+		ComputeHelper.Dispatch(clothCompute, activeVerts, kernelIndex: calculateVertexNormals);
 
 		// Read new positions from GPU
 		ComputeHelper.ReadDataFromBuffer(xBuffer, x, isAppendBuffer: false);
 		ComputeHelper.ReadDataFromBuffer(normalsBuffer, normals, isAppendBuffer: false);
-
 
 		// Update positions for each cloth
 		for (int i = 0; i < lengthsNative.Length; i++) {
@@ -279,10 +287,12 @@ public class ClothDispatcher : MonoBehaviour
 		if (activeCloths == 0) return false;
 
 		activeVerts = 0;
+		int numTriangles = 0;
 		for (int i = 0; i < cloths.Length; i++) {
 			if (cloths[i].isInitialized && cloths[i].meshRenderer.isVisible) {
 				simulatedClothIndices.Add(i);
 				activeVerts += cloths[i].x.Length;
+				numTriangles += cloths[i].mesh.triangles.Length / 3;
 				cloths[i].isSimulating = true;
 			} else {
 				cloths[i].isSimulating = false;
@@ -313,6 +323,10 @@ public class ClothDispatcher : MonoBehaviour
 		applyWindNative = new NativeArray<bool>(simulatedClothIndices.Count, Allocator.Persistent);
 		numVertsPerSubstep = new NativeArray<int>(simulatedClothIndices.Count, Allocator.Persistent);
 		sortedClothIndices = new NativeArray<int>(simulatedClothIndices.Count, Allocator.Persistent);
+		trianglesNative = new NativeArray<int>(numTriangles * 3, Allocator.Persistent);
+		vertexToTrianglesNative = new NativeArray<int4>(activeVerts, Allocator.Persistent);
+		//NativeArray<int> triangleLengthsNative = new NativeArray<int>(simulatedClothIndices.Count, Allocator.Temp);
+		//NativeArray<int> triangleStartIndexNative = new NativeArray<int>(simulatedClothIndices.Count, Allocator.Temp);
 
 		for (int i = 0; i < stretchBatches; i++) {
 			d0[i].Clear();
@@ -335,6 +349,7 @@ public class ClothDispatcher : MonoBehaviour
 		// Sort the NativeArrays based on substeps
 		QuickSort(substepsNative, sortedClothIndices, 0, substepsNative.Length - 1);
 
+		int triangleStartIndex = 0;
 		for (int i = 0; i < sortedClothIndices.Length; i++) {
 			int clothIndex = sortedClothIndices[i];
 			lengthsNative[i] = cloths[clothIndex].x.Length;
@@ -347,6 +362,7 @@ public class ClothDispatcher : MonoBehaviour
 			handleCollisionsNative[i] = cloths[clothIndex].handleCollisions;
 			applyGravityNative[i] = cloths[clothIndex].applyGravity;
 			applyWindNative[i] = cloths[clothIndex].applyWind;
+			int trianglesLength = cloths[clothIndex].mesh.triangles.Length;
 
 			// Count number of iterations to dispatch per simulation step
 			for (int j = i; j >= 0; j--) {
@@ -376,7 +392,7 @@ public class ClothDispatcher : MonoBehaviour
 				startIndexNative[i] = startIndexNative[i - 1] + lengthsNative[i - 1];
 			}
 
-			// Copy vertices and inverse masses from individual cloths to combined array
+			// Copy vertices, inverse masses, and triangles from individual cloths to combined array
 			unsafe {
 				int size = Marshal.SizeOf(typeof(Vector3)) * lengthsNative[i];
 				IntPtr sourcePtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[clothIndex].x, 0);
@@ -387,6 +403,27 @@ public class ClothDispatcher : MonoBehaviour
 				sourcePtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[clothIndex].w, 0);
 				destPtr = (IntPtr)((float*)wNative.GetUnsafePtr() + startIndexNative[i]); // Calculate offset for the subset
 				UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
+
+				size = Marshal.SizeOf(typeof(int)) * trianglesLength;
+				sourcePtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[clothIndex].mesh.triangles, 0);
+				destPtr = (IntPtr)((int*)trianglesNative.GetUnsafePtr() + triangleStartIndex); // Calculate offset for the subset
+				UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
+			}
+
+			triangleStartIndex += trianglesLength;
+
+			for (int j = 0; j < cloths[clothIndex].vertexToTriangles.Length; j++) {
+				if (cloths[clothIndex].vertexToTriangles[j].Count == 4) {
+					vertexToTrianglesNative[startIndexNative[i] + j] = new int4(cloths[clothIndex].vertexToTriangles[j][0], cloths[clothIndex].vertexToTriangles[j][1], cloths[clothIndex].vertexToTriangles[j][2], cloths[clothIndex].vertexToTriangles[j][3]);
+				} else if (cloths[clothIndex].vertexToTriangles[j].Count == 3) {
+					vertexToTrianglesNative[startIndexNative[i] + j] = new int4(cloths[clothIndex].vertexToTriangles[j][0], cloths[clothIndex].vertexToTriangles[j][1], cloths[clothIndex].vertexToTriangles[j][2], -1);
+				} else if (cloths[clothIndex].vertexToTriangles[j].Count == 2) {
+					vertexToTrianglesNative[startIndexNative[i] + j] = new int4(cloths[clothIndex].vertexToTriangles[j][0], cloths[clothIndex].vertexToTriangles[j][1], -1, -1);
+				} else if (cloths[clothIndex].vertexToTriangles[j].Count == 1) {
+					vertexToTrianglesNative[startIndexNative[i] + j] = new int4(cloths[clothIndex].vertexToTriangles[j][0], -1, -1, -1);
+				} else {
+					vertexToTrianglesNative[startIndexNative[i] + j] = new int4(-1, -1, -1, -1);
+				}
 			}
 
 			// Create combined constraint information
@@ -411,8 +448,12 @@ public class ClothDispatcher : MonoBehaviour
 			}
 		}
 
+		//triangleLengthsNative.Dispose();
+		//triangleStartIndexNative.Dispose();
+
 		vNative = new NativeArray<Vector3>(activeVerts, Allocator.Persistent);
 		normalsNative = new NativeArray<Vector3>(activeVerts, Allocator.Persistent);
+		triangleNormalsNative = new NativeArray<Vector3>(numTriangles, Allocator.Persistent);
 
 		xBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(activeVerts);
 		xBuffer.SetData(xNative);
@@ -422,8 +463,19 @@ public class ClothDispatcher : MonoBehaviour
 
 		normalsBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(activeVerts);
 		normalsBuffer.SetData(normalsNative);
-		clothCompute.SetBuffer(calculateNormals, "normals", normalsBuffer);
-		clothCompute.SetBuffer(calculateNormals, "x", xBuffer);
+		trianglesBuffer = ComputeHelper.CreateStructuredBuffer<int>(numTriangles * 3);
+		trianglesBuffer.SetData(trianglesNative);
+		vertexToTrianglesBuffer = ComputeHelper.CreateStructuredBuffer<int4>(activeVerts);
+		vertexToTrianglesBuffer.SetData(vertexToTrianglesNative);
+		triangleNormalsBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numTriangles);
+		triangleNormalsBuffer.SetData(triangleNormalsNative);
+
+		clothCompute.SetBuffer(calculateVertexNormals, "normals", normalsBuffer);
+		clothCompute.SetBuffer(calculateVertexNormals, "vertexToTriangle", vertexToTrianglesBuffer);
+		clothCompute.SetBuffer(calculateVertexNormals, "triangleNormals", triangleNormalsBuffer);
+		clothCompute.SetBuffer(calculateTriangleNormals, "triangleNormals", triangleNormalsBuffer);
+		clothCompute.SetBuffer(calculateTriangleNormals, "triangles", trianglesBuffer);
+		clothCompute.SetBuffer(calculateTriangleNormals, "x", xBuffer);
 
 		wBuffer = ComputeHelper.CreateStructuredBuffer<float>(activeVerts);
 		wBuffer.SetData(wNative);
@@ -582,7 +634,6 @@ public class ClothDispatcher : MonoBehaviour
 		clothCompute.SetBuffer(updateVelocityKernel, "damping", dampingBuffer);
 
 		clothCompute.SetInt("numCloths", simulatedClothIndices.Count);
-		clothCompute.SetInt("vertexCount", x.Length);
 
 		numStepsPerLoop.Add(substepsNative[substepsNative.Length - 1]);
 		substepsIndexPerLoop.Add((substepsNative.Length - 1));
@@ -640,10 +691,13 @@ public class ClothDispatcher : MonoBehaviour
 		if (numVertsPerSubstep.IsCreated) numVertsPerSubstep.Dispose();
 		if (sortedClothIndices.IsCreated) sortedClothIndices.Dispose();
 		if (normalsNative.IsCreated) normalsNative.Dispose();
+		if (trianglesNative.IsCreated) trianglesNative.Dispose();
+		if (vertexToTrianglesNative.IsCreated) vertexToTrianglesNative.Dispose();
+		if (triangleNormalsNative.IsCreated) triangleNormalsNative.Dispose();
 	}
 
 	void Release() {
-		ComputeHelper.Release(xBuffer, vBuffer, wBuffer, pBuffer, stepVelocityBuffer, gravityVectorBuffer, windVectorBuffer, startIndicesBuffer, substepsBuffer, stretchingAlphaBuffer, bendingAlphaBuffer, stepTimeBuffer, dampingBuffer, maxVelocityBuffer, normalsBuffer);
+		ComputeHelper.Release(xBuffer, vBuffer, wBuffer, pBuffer, stepVelocityBuffer, gravityVectorBuffer, windVectorBuffer, startIndicesBuffer, substepsBuffer, stretchingAlphaBuffer, bendingAlphaBuffer, stepTimeBuffer, dampingBuffer, maxVelocityBuffer, normalsBuffer, trianglesBuffer, vertexToTrianglesBuffer, triangleNormalsBuffer);
 		ComputeHelper.Release(stretchingIDsBuffers);
 		ComputeHelper.Release(d0Buffers);
 		ComputeHelper.Release(bendingIDsBuffers);

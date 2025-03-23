@@ -13,7 +13,8 @@
 #pragma kernel SolveBendingBatch4
 #pragma kernel SolveBendingBatch5
 #pragma kernel SolveBendingBatch6
-#pragma kernel CalculateNormals
+#pragma kernel CalculateTriangleNormals
+#pragma kernel CalculateVertexNormals
 
 RWStructuredBuffer<float3> x;
 RWStructuredBuffer<float3> v;
@@ -34,8 +35,10 @@ StructuredBuffer<float> bendingAlpha;
 StructuredBuffer<float> stepTime;
 StructuredBuffer<float> damping;
 StructuredBuffer<float> maxVelocity;
+StructuredBuffer<int> triangles;
+RWStructuredBuffer<float3> triangleNormals;
+StructuredBuffer<int4> vertexToTriangle;
 uint globalSubstep;
-uint vertexCount;
 uint numCloths;
 uint projectionIterations;
 
@@ -595,31 +598,45 @@ void SolveBendingBatch6(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(128, 1, 1)]
-void CalculateNormals(uint3 id : SV_DispatchThreadID)
+void CalculateTriangleNormals(uint3 id : SV_DispatchThreadID)
 {
-    if (id.x > vertexCount)
-        return;
+    int id0 = triangles[id.x * 3];
+    int id1 = triangles[id.x * 3 + 1];
+    int id2 = triangles[id.x * 3 + 2];
+    
+    float3 e1 = x[id1] - x[id0];
+    float3 e2 = x[id2] - x[id0];
+    triangleNormals[id.x] = normalize(cross(e1, e2));
+}
+
+[numthreads(128, 1, 1)]
+void CalculateVertexNormals(uint3 id : SV_DispatchThreadID)
+{
+    int t0 = vertexToTriangle[id.x].x;
+    int t1 = vertexToTriangle[id.x].y;
+    int t2 = vertexToTriangle[id.x].z;
+    int t3 = vertexToTriangle[id.x].w;
     
     float3 normal = float3(0.0f, 0.0f, 0.0f);
-    int neighborCount = 0;
-
-    // Approximate neighbors (example: assuming vertices are in a grid)
-    for (int i = -1; i <= 1; i++)
+    
+    if (t0 != -1)
     {
-        for (int j = -1; j <= 1; j++)
-        {
-            int neighborIndex = id.x + i + j * (int) sqrt((float) vertexCount); //Simplified grid neighbor access.
-            if (neighborIndex >= 0 && neighborIndex < vertexCount && neighborIndex != id.x)
-            {
-                normal += x[neighborIndex];
-                neighborCount++;
-            }
-        }
+        normal += triangleNormals[t0];
     }
     
-    if (neighborCount > 0) {
-        normals[id.x] = normalize(normal / neighborCount - x[id.x]);
-    } else {
-        normals[id.x] = float3(0.0f, 1.0f, 0.0f); // Default normal if no neighbors.
+    if (t1 != -1)
+    {
+        normal += triangleNormals[t1];
     }
+    
+    if (t2 != -1)
+    {
+        normal += triangleNormals[t2];
+    }
+    
+    if (t3 != -1)
+    {
+        normal += triangleNormals[t3];
+    }
+    normals[id.x] = normalize(normal);
 }

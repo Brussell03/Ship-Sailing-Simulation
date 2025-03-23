@@ -3,6 +3,7 @@ using NUnit.Framework.Internal;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Unity.Mathematics;
 using UnityEngine;
 using static UnityEngine.InputManagerEntry;
 
@@ -41,8 +42,9 @@ public class ClothSimulation : MonoBehaviour
 
 	private MeshFilter meshFilter;
 	public MeshRenderer meshRenderer { get; private set; }
+	public List<int>[] vertexToTriangles { get; private set; }
 	private MeshCollider meshCollider;
-	Mesh mesh;
+	public Mesh mesh { get; set; }
 	private Hash hash;
 
 	public bool drawGraphColoring = false;
@@ -244,15 +246,26 @@ public class ClothSimulation : MonoBehaviour
 
 		// Create arrays to store triangle indices
 		int[] tris = new int[subdivisions * subdivisions * 6];
+		vertexToTriangles = new List<int>[x.Length];
+		for (int i = 0; i < vertexToTriangles.Length; i++)
+		{
+			vertexToTriangles[i] = new List<int>(4);
+		}
 		int triangleIndex = 0;
 
 		// Generate triangle indices
 		for (int i = 0; i < subdivisions; i++) {
 			for (int j = 0; j < subdivisions; j++) {
+				vertexToTriangles[i * (subdivisions + 1) + j].Add(triangleIndex);
+				vertexToTriangles[i * (subdivisions + 1) + 1 + j].Add(triangleIndex);
+				vertexToTriangles[(i + 1) * (subdivisions + 1) + j].Add(triangleIndex);
 				tris[triangleIndex++] = i * (subdivisions + 1) + j;
 				tris[triangleIndex++] = i * (subdivisions + 1) + 1 + j;
 				tris[triangleIndex++] = (i + 1) * (subdivisions + 1) + j;
 
+				vertexToTriangles[i * (subdivisions + 1) + 1 + j].Add(triangleIndex);
+				vertexToTriangles[(i + 1) * (subdivisions + 1) + j + 1].Add(triangleIndex);
+				vertexToTriangles[(i + 1) * (subdivisions + 1) + j].Add(triangleIndex);
 				tris[triangleIndex++] = i * (subdivisions + 1) + 1 + j;
 				tris[triangleIndex++] = (i + 1) * (subdivisions + 1) + j + 1;
 				tris[triangleIndex++] = (i + 1) * (subdivisions + 1) + j;
