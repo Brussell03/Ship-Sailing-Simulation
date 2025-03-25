@@ -103,7 +103,7 @@ public class ClothSimulation : MonoBehaviour
 	private void FixedUpdate() {
 		mesh.vertices = x;
 		mesh.RecalculateBounds();
-		mesh.normals = normals;
+		//mesh.normals = normals;
 		//mesh.RecalculateNormals();
 		//meshCollider.sharedMesh = mesh;
 	}
@@ -184,11 +184,11 @@ public class ClothSimulation : MonoBehaviour
 		int vertexCount = (subdivisions + 1) * (subdivisions + 1);
 
 
-		x = new Vector3[vertexCount];
+		x = new Vector3[vertexCount * 2];
 		v = new Vector3[vertexCount];
 		w = new float[vertexCount];
-		normals = new Vector3[vertexCount];
-		Vector2[] uv = new Vector2[vertexCount];
+		normals = new Vector3[vertexCount * 2];
+		Vector2[] uv = new Vector2[vertexCount * 2];
 
 		float wScale = 0.00001f;
 		float invCellMass = (subdivisions * subdivisions) / (density * thickness * width * height) * wScale;
@@ -198,8 +198,9 @@ public class ClothSimulation : MonoBehaviour
 		for (int i = 0; i < subdivisions + 1; i++) {
 			for (int j = 0; j < subdivisions + 1; j++) {
 				x[j + i * (subdivisions + 1)] = new Vector3(j / (float)subdivisions * width, 0, height - i / (float)subdivisions * height);
+				x[vertexCount + j + i * (subdivisions + 1)] = new Vector3(j / (float)subdivisions * width, 0, height - i / (float)subdivisions * height);
 				uv[j + i * (subdivisions + 1)] = new Vector3(j / (float)subdivisions * width, height - i / (float)subdivisions * height);
-
+				uv[vertexCount + j + i * (subdivisions + 1)] = new Vector3(j / (float)subdivisions * width, height - i / (float)subdivisions * height);
 
 				if ((i == 0 && j == 0) || (i == subdivisions && j == 0) || (i == subdivisions && j == subdivisions) || (i == 0 && j == subdivisions)) {
 					// Corner Point
@@ -245,8 +246,8 @@ public class ClothSimulation : MonoBehaviour
 		//w[w.Length / 2 + subdivisions / 2] = 0;
 
 		// Create arrays to store triangle indices
-		int[] tris = new int[subdivisions * subdivisions * 6];
-		vertexToTriangles = new List<int>[x.Length];
+		int[] tris = new int[subdivisions * subdivisions * 6 * 2];
+		vertexToTriangles = new List<int>[vertexCount];
 		for (int i = 0; i < vertexToTriangles.Length; i++)
 		{
 			vertexToTriangles[i] = new List<int>(4);
@@ -256,19 +257,28 @@ public class ClothSimulation : MonoBehaviour
 		// Generate triangle indices
 		for (int i = 0; i < subdivisions; i++) {
 			for (int j = 0; j < subdivisions; j++) {
-				vertexToTriangles[i * (subdivisions + 1) + j].Add(triangleIndex);
-				vertexToTriangles[i * (subdivisions + 1) + 1 + j].Add(triangleIndex);
-				vertexToTriangles[(i + 1) * (subdivisions + 1) + j].Add(triangleIndex);
+				vertexToTriangles[i * (subdivisions + 1) + j].Add(triangleIndex / 3);
+				vertexToTriangles[i * (subdivisions + 1) + 1 + j].Add(triangleIndex / 3);
+				vertexToTriangles[(i + 1) * (subdivisions + 1) + j].Add(triangleIndex / 3);
 				tris[triangleIndex++] = i * (subdivisions + 1) + j;
 				tris[triangleIndex++] = i * (subdivisions + 1) + 1 + j;
 				tris[triangleIndex++] = (i + 1) * (subdivisions + 1) + j;
 
-				vertexToTriangles[i * (subdivisions + 1) + 1 + j].Add(triangleIndex);
-				vertexToTriangles[(i + 1) * (subdivisions + 1) + j + 1].Add(triangleIndex);
-				vertexToTriangles[(i + 1) * (subdivisions + 1) + j].Add(triangleIndex);
+				tris[tris.Length - triangleIndex] = vertexCount + i * (subdivisions + 1) + j;
+				tris[tris.Length - triangleIndex + 1] = vertexCount + (i + 1) * (subdivisions + 1) + j;
+				tris[tris.Length - triangleIndex + 2] = vertexCount + i * (subdivisions + 1) + 1 + j;
+
+
+				vertexToTriangles[i * (subdivisions + 1) + 1 + j].Add(triangleIndex / 3);
+				vertexToTriangles[(i + 1) * (subdivisions + 1) + j + 1].Add(triangleIndex / 3);
+				vertexToTriangles[(i + 1) * (subdivisions + 1) + j].Add(triangleIndex / 3);
 				tris[triangleIndex++] = i * (subdivisions + 1) + 1 + j;
 				tris[triangleIndex++] = (i + 1) * (subdivisions + 1) + j + 1;
 				tris[triangleIndex++] = (i + 1) * (subdivisions + 1) + j;
+
+				tris[tris.Length - triangleIndex] = vertexCount + i * (subdivisions + 1) + 1 + j;
+				tris[tris.Length - triangleIndex + 1] = vertexCount + (i + 1) * (subdivisions + 1) + j;
+				tris[tris.Length - triangleIndex + 2] = vertexCount + (i + 1) * (subdivisions + 1) + j + 1;
 			}
 		}
 
@@ -286,7 +296,7 @@ public class ClothSimulation : MonoBehaviour
 
 
 		// Generate default distances
-		int numTris = tris.Length / 3;
+		int numTris = tris.Length / 6;
 		neighbors = FindTriNeighbors(tris);
 
 
@@ -500,7 +510,7 @@ public class ClothSimulation : MonoBehaviour
 
 	private int[] FindTriNeighbors(int[] tris) {
 
-		int numTris = tris.Length / 3;
+		int numTris = tris.Length / 6;
 		List<int[]> edges = new List<int[]>();
 
 		for (int i = 0; i < numTris; i++) {

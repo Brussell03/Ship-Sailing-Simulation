@@ -221,11 +221,17 @@ public class ClothDispatcher : MonoBehaviour
 					int size = Marshal.SizeOf(typeof(Vector3)) * lengthsNative[i];
 					IntPtr destPtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[sortedClothIndices[i]].x, 0);
 					UnsafeUtility.MemCpy((void*)destPtr, (void*)(sourcePtr + startIndexNative[i]), size);
+
+					destPtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[sortedClothIndices[i]].x, lengthsNative[i]);
+					UnsafeUtility.MemCpy((void*)destPtr, (void*)(sourcePtr + startIndexNative[i]), size);
 				}
 				fixed (Vector3* sourcePtr = normals) {
 					int size = Marshal.SizeOf(typeof(Vector3)) * lengthsNative[i];
 					IntPtr destPtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[sortedClothIndices[i]].normals, 0);
 					UnsafeUtility.MemCpy((void*)destPtr, (void*)(sourcePtr + startIndexNative[i]), size);
+
+					destPtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[sortedClothIndices[i]].normals, lengthsNative[i]);
+					UnsafeUtility.MemCpy((void*)destPtr, (void*)(sourcePtr + startIndexNative[i] + activeVerts), size);
 				}
 			}
 		}
@@ -262,7 +268,7 @@ public class ClothDispatcher : MonoBehaviour
 			clothsLastPosition[i] = cloths[i].transform.position;
 
 			if (cloths[i].gameObject.activeInHierarchy) {
-				totalVerts += cloths[i].x.Length;
+				totalVerts += cloths[i].x.Length / 2;
 				activeCloths++;
 			}
 		}
@@ -291,8 +297,8 @@ public class ClothDispatcher : MonoBehaviour
 		for (int i = 0; i < cloths.Length; i++) {
 			if (cloths[i].isInitialized && cloths[i].meshRenderer.isVisible) {
 				simulatedClothIndices.Add(i);
-				activeVerts += cloths[i].x.Length;
-				numTriangles += cloths[i].mesh.triangles.Length / 3;
+				activeVerts += cloths[i].x.Length / 2;
+				numTriangles += cloths[i].mesh.triangles.Length / 6;
 				cloths[i].isSimulating = true;
 			} else {
 				cloths[i].isSimulating = false;
@@ -352,7 +358,7 @@ public class ClothDispatcher : MonoBehaviour
 		int triangleStartIndex = 0;
 		for (int i = 0; i < sortedClothIndices.Length; i++) {
 			int clothIndex = sortedClothIndices[i];
-			lengthsNative[i] = cloths[clothIndex].x.Length;
+			lengthsNative[i] = cloths[clothIndex].x.Length / 2;
 			float dt_step = Time.fixedDeltaTime / substepsNative[i];
 			stretchingAlphaNative[i] = cloths[clothIndex].stretchingCompliance / (dt_step * dt_step);
 			bendingAlphaNative[i] = cloths[clothIndex].bendingCompliance / (dt_step * dt_step);
@@ -362,7 +368,7 @@ public class ClothDispatcher : MonoBehaviour
 			handleCollisionsNative[i] = cloths[clothIndex].handleCollisions;
 			applyGravityNative[i] = cloths[clothIndex].applyGravity;
 			applyWindNative[i] = cloths[clothIndex].applyWind;
-			int trianglesLength = cloths[clothIndex].mesh.triangles.Length;
+			int trianglesLength = cloths[clothIndex].mesh.triangles.Length / 2;
 
 			// Count number of iterations to dispatch per simulation step
 			for (int j = i; j >= 0; j--) {
@@ -452,7 +458,7 @@ public class ClothDispatcher : MonoBehaviour
 		//triangleStartIndexNative.Dispose();
 
 		vNative = new NativeArray<Vector3>(activeVerts, Allocator.Persistent);
-		normalsNative = new NativeArray<Vector3>(activeVerts, Allocator.Persistent);
+		normalsNative = new NativeArray<Vector3>(activeVerts * 2, Allocator.Persistent);
 		triangleNormalsNative = new NativeArray<Vector3>(numTriangles, Allocator.Persistent);
 
 		xBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(activeVerts);
@@ -461,7 +467,7 @@ public class ClothDispatcher : MonoBehaviour
 		vBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(activeVerts);
 		vBuffer.SetData(vNative);
 
-		normalsBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(activeVerts);
+		normalsBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(normalsNative.Length);
 		normalsBuffer.SetData(normalsNative);
 		trianglesBuffer = ComputeHelper.CreateStructuredBuffer<int>(numTriangles * 3);
 		trianglesBuffer.SetData(trianglesNative);
@@ -634,6 +640,7 @@ public class ClothDispatcher : MonoBehaviour
 		clothCompute.SetBuffer(updateVelocityKernel, "damping", dampingBuffer);
 
 		clothCompute.SetInt("numCloths", simulatedClothIndices.Count);
+		clothCompute.SetInt("numVerts", activeVerts);
 
 		numStepsPerLoop.Add(substepsNative[substepsNative.Length - 1]);
 		substepsIndexPerLoop.Add((substepsNative.Length - 1));

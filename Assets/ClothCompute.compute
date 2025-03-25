@@ -41,6 +41,7 @@ StructuredBuffer<int4> vertexToTriangle;
 uint globalSubstep;
 uint numCloths;
 uint projectionIterations;
+uint numVerts;
 
 int GetClothIndex(uint3 id)
 {
@@ -639,4 +640,5 @@ void CalculateVertexNormals(uint3 id : SV_DispatchThreadID)
         normal += triangleNormals[t3];
     }
     normals[id.x] = normalize(normal);
+    normals[numVerts + id.x] = -normalize(normal);
 }
