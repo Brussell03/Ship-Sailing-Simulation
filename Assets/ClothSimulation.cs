@@ -53,9 +53,9 @@ public class ClothSimulation : MonoBehaviour
 	// Start is called before the first frame update
 	void Start()
 	{
-		meshFilter = GetComponent<MeshFilter>();
-		meshRenderer = GetComponent<MeshRenderer>();
-		meshCollider = GetComponent<MeshCollider>();
+		//meshFilter = GetComponent<MeshFilter>();
+		//meshRenderer = GetComponent<MeshRenderer>();
+		//meshCollider = GetComponent<MeshCollider>();
 
 		Init();
 
@@ -101,8 +101,9 @@ public class ClothSimulation : MonoBehaviour
 	}
 
 	private void FixedUpdate() {
-		mesh.vertices = x;
-		mesh.RecalculateBounds();
+		//mesh.vertices = x;
+		//mesh.RecalculateBounds();
+
 		//mesh.normals = normals;
 		//mesh.RecalculateNormals();
 		//meshCollider.sharedMesh = mesh;
@@ -291,8 +292,8 @@ public class ClothSimulation : MonoBehaviour
 		mesh.RecalculateBounds();
 
 		// Assign the mesh to the GameObject
-		meshFilter.mesh = mesh;
-		meshCollider.sharedMesh = mesh;
+		//meshFilter.mesh = mesh;
+		//meshCollider.sharedMesh = mesh;
 
 
 		// Generate default distances

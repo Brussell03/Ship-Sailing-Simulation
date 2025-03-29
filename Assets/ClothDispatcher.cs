@@ -8,6 +8,7 @@ using Unity.VisualScripting.FullSerializer;
 using UnityEngine;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
+using UnityEngine.Rendering;
 
 public class ClothDispatcher : MonoBehaviour
 {
@@ -18,6 +19,7 @@ public class ClothDispatcher : MonoBehaviour
 	[Min(1)]
 	public int projectionIterations = 3;
 	public bool isSimulating = true;
+	public Material clothMaterial;
 	private Vector3[] clothsLastPosition;
 	private ClothSimulation[] cloths;
 
@@ -63,6 +65,7 @@ public class ClothDispatcher : MonoBehaviour
 	ComputeBuffer trianglesBuffer;
 	ComputeBuffer vertexToTrianglesBuffer;
 	ComputeBuffer triangleNormalsBuffer;
+	GraphicsBuffer commandBuffer;
 	#endregion
 
 	#region Native Arrays
@@ -109,6 +112,9 @@ public class ClothDispatcher : MonoBehaviour
 	int activeVerts = 0; // How many vertices are in the cloths being simulated
 	int activeCloths = 0; // How many cloths are active in the hierarchy
 
+	GraphicsBuffer.IndirectDrawArgs[] commandData;
+	const int commandCount = 1;
+
 	// Start is called before the first frame update
 	void Start()
     {
@@ -127,7 +133,7 @@ public class ClothDispatcher : MonoBehaviour
 
 		bool clothStateChanged = false;
 		for (int i = 0; i < cloths.Length; i++) {
-			if ((cloths[i].isInitialized && cloths[i].meshRenderer.isVisible) != cloths[i].isSimulating) {
+			if ((cloths[i].isInitialized/* && cloths[i].meshRenderer.isVisible*/) != cloths[i].isSimulating) {
 				clothStateChanged = true;
 				break;
 			}
@@ -172,6 +178,7 @@ public class ClothDispatcher : MonoBehaviour
 		clothCompute.SetBuffer(predictPositionKernel, "gravityVector", gravityVectorBuffer);
 		clothCompute.SetBuffer(predictPositionKernel, "windVector", windVectorBuffer);
 
+
 		int step = 0;
 		for (int i = 0; i < numStepsPerLoop.Count; i++)
 		{
@@ -207,7 +214,7 @@ public class ClothDispatcher : MonoBehaviour
 		ComputeHelper.Dispatch(clothCompute, activeVerts, kernelIndex: calculateVertexNormals);
 
 		// Read new positions from GPU
-		ComputeHelper.ReadDataFromBuffer(xBuffer, x, isAppendBuffer: false);
+		/*ComputeHelper.ReadDataFromBuffer(xBuffer, x, isAppendBuffer: false);
 		ComputeHelper.ReadDataFromBuffer(normalsBuffer, normals, isAppendBuffer: false);
 
 		// Update positions for each cloth
@@ -234,7 +241,24 @@ public class ClothDispatcher : MonoBehaviour
 					UnsafeUtility.MemCpy((void*)destPtr, (void*)(sourcePtr + startIndexNative[i] + activeVerts), size);
 				}
 			}
-		}
+		}*/
+
+		RenderParams rp = new RenderParams(clothMaterial);
+		rp.worldBounds = new Bounds(Vector3.zero, 10000 * Vector3.one); // use tighter bounds
+		rp.matProps = new MaterialPropertyBlock();
+		rp.matProps.SetBuffer("_Triangles", trianglesBuffer);
+		rp.matProps.SetBuffer("_Positions", xBuffer);
+		rp.matProps.SetBuffer("_Normals", normalsBuffer);
+		rp.matProps.SetInt("_BaseVertexIndex", (int)0);
+		rp.matProps.SetMatrix("_ObjectToWorld", Matrix4x4.Translate(new Vector3(0, 0, 0)));
+
+		commandData[0].vertexCountPerInstance = (uint)lengthsNative[0];
+		commandData[0].instanceCount = 1;
+		//commandData[1].vertexCountPerInstance = (uint)lengthsNative[1];
+		//commandData[1].instanceCount = 10;
+		commandBuffer.SetData(commandData);
+
+		Graphics.RenderPrimitivesIndirect(rp, MeshTopology.Triangles, commandBuffer, commandCount);
 	}
 
 
@@ -295,7 +319,7 @@ public class ClothDispatcher : MonoBehaviour
 		activeVerts = 0;
 		int numTriangles = 0;
 		for (int i = 0; i < cloths.Length; i++) {
-			if (cloths[i].isInitialized && cloths[i].meshRenderer.isVisible) {
+			if (cloths[i].isInitialized/* && cloths[i].meshRenderer.isVisible*/) {
 				simulatedClothIndices.Add(i);
 				activeVerts += cloths[i].x.Length / 2;
 				numTriangles += cloths[i].mesh.triangles.Length / 6;
@@ -661,6 +685,9 @@ public class ClothDispatcher : MonoBehaviour
 			i -= skip - 1;
 		}
 
+		commandBuffer = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, commandCount, GraphicsBuffer.IndirectDrawArgs.size);
+		commandData = new GraphicsBuffer.IndirectDrawArgs[commandCount];
+
 		return true;
 	}
 
@@ -709,6 +736,7 @@ public class ClothDispatcher : MonoBehaviour
 		ComputeHelper.Release(d0Buffers);
 		ComputeHelper.Release(bendingIDsBuffers);
 		ComputeHelper.Release(dihedral0Buffers);
+		commandBuffer?.Release();
 	}
 
 	#region Cloth Sort Sorting
