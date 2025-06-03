@@ -1,0 +1,60 @@
+#define UNITY_INDIRECT_DRAW_ARGS IndirectDrawArgs
+
+//#include "UnityIndirect.cginc"
+
+StructuredBuffer<float3> Vertices;
+StructuredBuffer<int> Triangles;
+StructuredBuffer<float3> Normals;
+StructuredBuffer<float2> UVs;
+StructuredBuffer<float4x4> InstanceTransforms;
+StructuredBuffer<int> TriangleOffsets;
+StructuredBuffer<int> TriangleLocalStartIndex;
+StructuredBuffer<int> SideToInstance;
+
+uint numSides;
+uint oneSidedNumTriangles;
+//uint offset;
+
+void GetVertexData_float(uint vertexID : SV_VertexID, out float3 position, out float3 normal, out float2 texcoord)
+{
+    //InitIndirectDrawArgs(0);
+    
+    uint sideID = 0;
+    
+    if (numSides > 0)
+    {
+        for (uint i = 1; i < numSides; i++)
+        {
+            if (vertexID < TriangleLocalStartIndex[i])
+            {
+                sideID = i - 1;
+                break;
+            }
+            else if (i == numSides - 1)
+            {
+                sideID = i;
+                break;
+            }
+
+        }
+    }
+    
+    uint offsetID = vertexID + TriangleOffsets[sideID] - TriangleLocalStartIndex[sideID];
+    uint instanceID = SideToInstance[sideID];
+    
+    uint index = Triangles[offsetID];
+    
+    //position = Vertices[Triangles[GetIndirectVertexID(vertexID)] + 0];
+    float3 localPos = Vertices[index];
+    
+    position = mul(InstanceTransforms[instanceID], float4(localPos, 1.0f)).xyz;
+    //position = float4(position2, 1.0);
+    //o.pos = mul(UNITY_MATRIX_VP, wpos);
+    //normal = mul(unity_ObjectToWorld, float4(_Normals[_Triangles[GetIndirectVertexID(svVertexID)] + _BaseVertexIndex], 0.0f)).xyz;
+    
+    //normal = Normals[Triangles[GetIndirectVertexID(vertexID)] + 0];
+    //texcoord = UVs[Triangles[GetIndirectVertexID(vertexID)] + 0];
+    //normal = Normals[index + 0];
+    normal = mul((float3x3) InstanceTransforms[instanceID], Normals[index] * (offsetID >= oneSidedNumTriangles ? -1 : 1)).xyz;
+    texcoord = UVs[index];
+}

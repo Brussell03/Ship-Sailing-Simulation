@@ -606,7 +606,7 @@ namespace Meryel.UnityCodeAssist.Editor
         {
             if (connect.ModelVersion != Self.ModelVersion)
             {
-                Serilog.Log.Error("Version mismatch with {ContactInfo}. Please update your asset and reinstall the Visual Studio extension. {ContactModel} != {SelfModel}", connect.ContactInfo, connect.ModelVersion, Self.ModelVersion);
+                Serilog.Log.Error("Version mismatch with {ContactInfo}. Please update your Unity asset and reinstall the Visual Studio/VS Code extension. {ContactModel} != {SelfModel}", connect.ContactInfo, connect.ModelVersion, Self.ModelVersion);
                 return;
             }
 
@@ -660,7 +660,7 @@ namespace Meryel.UnityCodeAssist.Editor
         {
             if (connectionInfo.ModelVersion != Self.ModelVersion)
             {
-                Serilog.Log.Error("Version mismatch with {ContactInfo}. Please update your asset and reinstall the Visual Studio extension. {ContactModel} != {SelfModel}", connectionInfo.ContactInfo, connectionInfo.ModelVersion, Self.ModelVersion);
+                Serilog.Log.Error("Version mismatch with {ContactInfo}. Please update your Unity asset and reinstall the Visual Studio/VS Code extension. {ContactModel} != {SelfModel}", connectionInfo.ContactInfo, connectionInfo.ModelVersion, Self.ModelVersion);
                 return;
             }
 
