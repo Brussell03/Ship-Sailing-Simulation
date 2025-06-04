@@ -47,14 +47,11 @@ void GetVertexData_float(uint vertexID : SV_VertexID, out float3 position, out f
     //position = Vertices[Triangles[GetIndirectVertexID(vertexID)] + 0];
     float3 localPos = Vertices[index];
     
-    position = mul(InstanceTransforms[instanceID], float4(localPos, 1.0f)).xyz;
-    //position = float4(position2, 1.0);
-    //o.pos = mul(UNITY_MATRIX_VP, wpos);
-    //normal = mul(unity_ObjectToWorld, float4(_Normals[_Triangles[GetIndirectVertexID(svVertexID)] + _BaseVertexIndex], 0.0f)).xyz;
+    //position = mul(InstanceTransforms[instanceID], float4(localPos, 1.0f)).xyz;
+    position = localPos;
     
-    //normal = Normals[Triangles[GetIndirectVertexID(vertexID)] + 0];
-    //texcoord = UVs[Triangles[GetIndirectVertexID(vertexID)] + 0];
-    //normal = Normals[index + 0];
-    normal = mul((float3x3) InstanceTransforms[instanceID], Normals[index] * (offsetID >= oneSidedNumTriangles ? -1 : 1)).xyz;
+    //normal = mul((float3x3) InstanceTransforms[instanceID], Normals[index] * (offsetID >= oneSidedNumTriangles ? -1 : 1)).xyz;
+    normal = Normals[index] * (offsetID >= oneSidedNumTriangles ? -1 : 1);
+    
     texcoord = UVs[index];
 }

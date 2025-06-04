@@ -53,11 +53,12 @@ public class ClothSimulation : MonoBehaviour
 	[HideInInspector] public List<int>[] vertexToTriangles { get; private set; }
 	[HideInInspector, SerializeField] public List<int> _pinnedVertices = new List<int>();
 	public List<int> pinnedVertices => _pinnedVertices; // Read-only reference variable to _pinnedVertices
+	public List<Vector3> pinnedVertLocalPos { get; private set; } = new List<Vector3>();
 	[HideInInspector] public List<int> selectedVertices = new List<int>();
 	private MeshCollider meshCollider;
 	private Hash hash;
 	private Mesh mesh;
-	private ClothDispatcher dispatcher;
+	public ClothDispatcher dispatcher { get; private set; }
 	public bool showShapingGizmos { get; set; } = false;
 
 	public bool drawGraphColoring = false;
@@ -70,14 +71,14 @@ public class ClothSimulation : MonoBehaviour
 	public int numOneSidedTriangles { get; private set; }
 	public bool isActive { get; private set; }
 
-	public enum SailTexture : int {
+	public enum ClothTexture : int {
 		BeachBall,
 		Foam,
 		Emojis,
 		Wave
 	};
 
-	public SailTexture sailTexture;
+	public ClothTexture clothTexture;
 	private float airDensity = 1.287f; // kg/m^3
 
 	private NativeArray<Vector3> partialSums;
@@ -108,7 +109,7 @@ public class ClothSimulation : MonoBehaviour
 
 		if (Application.isPlaying) {
 			meshRenderer.enabled = !dispatcher.isRendering;
-			meshRenderer.material.SetTexture("_BaseColorMap", dispatcher.textures[(int)sailTexture]);
+			meshRenderer.material.SetTexture("_BaseColorMap", dispatcher.textures[(int)clothTexture]);
 		}
 
 #if UNITY_EDITOR
@@ -322,6 +323,16 @@ public class ClothSimulation : MonoBehaviour
 			}
 		}
 
+		if (pinnedVertices != null) {
+			for (int i = 0; i < pinnedVertices.Count; i++) {
+				w[pinnedVertices[i]] = 0;
+				pinnedVertLocalPos.Add(x[pinnedVertices[i]]);
+			}
+		}
+
+		if (Application.isPlaying) {
+			transform.TransformPoints(x, x);
+		}
 		// Normalization (Optional)
 		/*for (int i = 0; i < subdivisions + 1; i++) {
 			for (int j = 0; j < subdivisions + 1; j++) {
@@ -330,16 +341,11 @@ public class ClothSimulation : MonoBehaviour
 		}*/
 
 		//w[0] = 0;
-		if (pinnedVertices != null) {
-			for (int i = 0; i < pinnedVertices.Count; i++) {
-				w[pinnedVertices[i]] = 0;
-			}
-		}
-		
+
 		//w[subdivisions] = 0;
 		//w[w.Length - 1] = 0;
 		//w[w.Length - 1 - subdivisions] = 0;
-		
+
 		//w[w.Length / 2 + subdivisions / 2] = 0;
 
 		// Create arrays to store triangle indices
@@ -678,7 +684,7 @@ public class ClothSimulation : MonoBehaviour
 			dispatcher = UnityEngine.Object.FindAnyObjectByType<ClothDispatcher>();
 
 			Material mat = new Material(meshRenderer.sharedMaterial);
-			mat.SetTexture("_BaseColorMap", dispatcher.textures[(int)sailTexture]);
+			mat.SetTexture("_BaseColorMap", dispatcher.textures[(int)clothTexture]);
 			meshRenderer.sharedMaterial = mat;
 		}
 	}
@@ -692,7 +698,7 @@ public class ClothSimulation : MonoBehaviour
 		meshRenderer.enabled = true;
 
 		Material mat = new Material(meshRenderer.sharedMaterial);
-		mat.SetTexture("_BaseColorMap", dispatcher.textures[(int)sailTexture]);
+		mat.SetTexture("_BaseColorMap", dispatcher.textures[(int)clothTexture]);
 		meshRenderer.sharedMaterial = mat;
 		isShowingCloth = true;
 	}

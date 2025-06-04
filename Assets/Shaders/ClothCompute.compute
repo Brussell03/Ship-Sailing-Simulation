@@ -35,7 +35,7 @@ StructuredBuffer<uint> stretchingIDs;
 StructuredBuffer<uint> bendingIDs;
 StructuredBuffer<float> d0;
 StructuredBuffer<float> dihedral0;
-StructuredBuffer<float3> stepVelocity;
+RWStructuredBuffer<float3> stepVelocity;
 StructuredBuffer<float3> gravityVector;
 StructuredBuffer<float3> windVector;
 StructuredBuffer<uint> startIndex;
@@ -50,6 +50,7 @@ RWStructuredBuffer<float3> triangleNormals;
 StructuredBuffer<AdjacentTriangleIndices> vertexToTriangle;
 StructuredBuffer<float> dragFactor; // 1/2 * density * Area
 RWStructuredBuffer<float3> windForce;
+StructuredBuffer<float3> pinnedVertPos;
 uint globalSubstep;
 uint numCloths;
 uint projectionIterations;
@@ -87,7 +88,7 @@ void UpdateVelocity (uint3 id : SV_DispatchThreadID)
     if (globalSubstep >= substeps[clothIndex])
         return;
     
-    v[id.x] = (p[id.x] - x[id.x] + (w[id.x] == 0 ? 0.0f : 1.0f) * stepVelocity[clothIndex]) / stepTime[clothIndex];
+    v[id.x] = (p[id.x] - x[id.x] - (w[id.x] == 0 ? stepVelocity[id.x] : 0)) / stepTime[clothIndex];
     v[id.x] *= (1 - damping[clothIndex] / substeps[clothIndex]); // Damp Velocities
     x[id.x] = p[id.x];
 }
@@ -102,6 +103,12 @@ void PredictPosition (uint3 id : SV_DispatchThreadID)
         return;
     
     uint anchored = w[id.x] == 0 ? 0 : 1;
+    
+    if (anchored == 0 && globalSubstep == 0)
+    {
+        stepVelocity[id.x] = (pinnedVertPos[id.x] - x[id.x]) / substeps[clothIndex];
+    }
+    
     windForce[id.x] = float3(0.0f, 0.0f, 0.0f);
     
     if (length(windVector[clothIndex]) != 0)
@@ -118,6 +125,11 @@ void PredictPosition (uint3 id : SV_DispatchThreadID)
         float3 forceShear = dragCoeffShear * windSpeedShear * windSpeedShear * vertexShearNormal;
         
         windForce[id.x] = dragFactor[id.x] * (forceNormal + forceShear);
+        //windForce = dragFactor[id.x] * (forceNormal + forceShear);
+        
+        //InterlockedAdd(asint(totalWindForce[clothIndex].x), asint(windForce.x));
+        //InterlockedAdd(asint(totalWindForce[clothIndex].y), asint(windForce.y));
+        //InterlockedAdd(asint(totalWindForce[clothIndex].z), asint(windForce.z));
     }
     
     v[id.x] += stepTime[clothIndex] * (gravityVector[clothIndex] * anchored + windForce[id.x] * w[id.x]); // Applies gravity and wind
@@ -127,8 +139,9 @@ void PredictPosition (uint3 id : SV_DispatchThreadID)
     {
         v[id.x] = ((sqrMagnitude > 0.0f) ? (v[id.x] / sqrt(sqrMagnitude)) : float3(0.0f, 0.0f, 0.0f)) * maxVelocity[clothIndex];
     }
+    
+    p[id.x] = x[id.x] + stepTime[clothIndex] * v[id.x] + (w[id.x] == 0 ? stepVelocity[id.x] : 0);
 
-    p[id.x] = x[id.x] + stepTime[clothIndex] * v[id.x] - anchored * stepVelocity[clothIndex];
 }
 
 [numthreads(128, 1, 1)]

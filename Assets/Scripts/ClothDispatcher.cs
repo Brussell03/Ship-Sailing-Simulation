@@ -85,6 +85,7 @@ public class ClothDispatcher : MonoBehaviour
 	ComputeBuffer[] sideToInstanceBuffers;
 	ComputeBuffer dragFactorBuffer;
 	ComputeBuffer windForceBuffer;
+	ComputeBuffer pinnedVertBuffer;
 
 	#endregion
 
@@ -233,14 +234,15 @@ public class ClothDispatcher : MonoBehaviour
 
 		if (isSimulating && numSimulatedCloths != 0) {
 			for (int i = 0; i < numSimulatedCloths; i++) {
-				// How far has the cloth object moved in since the last fixed update divided by the number of substeps
-				stepVelocitiesNative[i] = cloths[sortedClothIndicesNative[i]].transform.InverseTransformVector((cloths[sortedClothIndicesNative[i]].transform.position - clothsLastPosition[sortedClothIndicesNative[i]]) / substepsNative[i]);
+				for (int j = 0; j < cloths[sortedClothIndicesNative[i]].pinnedVertices.Count; j++) {
+					xNative[cloths[sortedClothIndicesNative[i]].pinnedVertices[j] + activeVertexStartIndexNative[i]] = cloths[sortedClothIndicesNative[i]].transform.TransformPoint(cloths[sortedClothIndicesNative[i]].pinnedVertLocalPos[j]);
+				}
 
-				// Direction of gravity for the cloth, Acceleration due to gravity
-				localGravityVectorsNative[i] = (gravityActive && applyGravityNative[i]) ? cloths[sortedClothIndicesNative[i]].transform.InverseTransformVector(Physics.gravity) : Vector3.zero;
+				// Acceleration Due to Gravity, Acceleration
+				localGravityVectorsNative[i] = (gravityActive && applyGravityNative[i]) ? Physics.gravity : Vector3.zero;
 
-				// Direction of wind for the cloth, Force
-				localWindVectorsNative[i] = (windActive && applyWindNative[i]) ? cloths[sortedClothIndicesNative[i]].transform.InverseTransformVector(Vector3.back) * windSpeed * UnityEngine.Random.Range(0.9f, 1.1f) + cloths[sortedClothIndicesNative[i]].transform.InverseTransformVector(Vector3.up) * UnityEngine.Random.Range(-1f, 1f) + cloths[simulatedClothIndices[i]].transform.InverseTransformVector(Vector3.right) * UnityEngine.Random.Range(-1f, 1f) : Vector3.zero;
+				// Wind Velocity, Velocity
+				localWindVectorsNative[i] = (windActive && applyWindNative[i]) ? transform.forward * windSpeed * UnityEngine.Random.Range(0.9f, 1.1f) + Vector3.up * UnityEngine.Random.Range(-1f, 1f) + Vector3.right * UnityEngine.Random.Range(-1f, 1f) : Vector3.zero;
 			}
 
 			for (int i = 0; i < cloths.Length; i++) {
@@ -254,15 +256,14 @@ public class ClothDispatcher : MonoBehaviour
 				hash.QueryAll(x, maxTravelDist);
 			}*/
 
-			stepVelocityBuffer.SetData(stepVelocitiesNative);
 			gravityVectorBuffer.SetData(localGravityVectorsNative);
 			windVectorBuffer.SetData(localWindVectorsNative);
+			pinnedVertBuffer.SetData(xNative);
 
-			clothCompute.SetFloat("projectionIterations", projectionIterations);
-			clothCompute.SetBuffer(updateVelocityKernel, "stepVelocity", stepVelocityBuffer);
-			clothCompute.SetBuffer(predictPositionKernel, "stepVelocity", stepVelocityBuffer);
 			clothCompute.SetBuffer(predictPositionKernel, "gravityVector", gravityVectorBuffer);
 			clothCompute.SetBuffer(predictPositionKernel, "windVector", windVectorBuffer);
+			clothCompute.SetBuffer(predictPositionKernel, "pinnedVertPos", pinnedVertBuffer);
+			clothCompute.SetBuffer(updateVelocityKernel, "pinnedVertPos", pinnedVertBuffer);
 
 			SimulationLoop();
 		}
@@ -678,7 +679,7 @@ public class ClothDispatcher : MonoBehaviour
 						trianglesNative[activeTriangleStartIndexNative[i] + j * 3 + 2] += activeVertexStartIndexNative[i];
 					}
 
-
+					
 				}
 
 				// Copy UVs
@@ -833,6 +834,7 @@ public class ClothDispatcher : MonoBehaviour
 		clothCompute.SetBuffer(solveBendingKernel6, "substeps", substepsBuffer);
 
 		clothCompute.SetInt("numCloths", numActiveCloths);
+		clothCompute.SetFloat("projectionIterations", projectionIterations);
 
 		clothMaterial.SetBuffer("Vertices", xBuffer);
 		clothMaterial.SetBuffer("Triangles", trianglesBuffer);
@@ -897,6 +899,11 @@ public class ClothDispatcher : MonoBehaviour
 		windForceBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numSimulatedVerts);
 		clothCompute.SetBuffer(predictPositionKernel, "windForce", windForceBuffer);
 
+		pinnedVertBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numActiveVerts);
+		pinnedVertBuffer.SetData(xNative);
+		clothCompute.SetBuffer(predictPositionKernel, "pinnedVertPos", pinnedVertBuffer);
+		clothCompute.SetBuffer(updateVelocityKernel, "pinnedVertPos", pinnedVertBuffer);
+
 		d0Buffers = new ComputeBuffer[stretchBatches];
 		stretchingIDsBuffers = new ComputeBuffer[stretchBatches];
 		for (int i = 0; i < stretchBatches; i++) {
@@ -943,7 +950,10 @@ public class ClothDispatcher : MonoBehaviour
 		clothCompute.SetBuffer(solveBendingKernel6, "dihedral0", dihedral0Buffers[5]);
 		clothCompute.SetBuffer(solveBendingKernel6, "bendingIDs", bendingIDsBuffers[5]);
 
-		stepVelocityBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numSimulatedCloths);
+		stepVelocityBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numSimulatedVerts);
+		clothCompute.SetBuffer(updateVelocityKernel, "stepVelocity", stepVelocityBuffer);
+		clothCompute.SetBuffer(predictPositionKernel, "stepVelocity", stepVelocityBuffer);
+
 		gravityVectorBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numSimulatedCloths);
 		windVectorBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numSimulatedCloths);
 
@@ -1035,14 +1045,14 @@ public class ClothDispatcher : MonoBehaviour
 			if (cloths[clothIndex].isRendering && !textureSortedClothsNative.Contains(clothIndex)) {
 				textureGroupFirstIndex.Add(numAddedCloths);
 
-				int currentTexture = (int)cloths[clothIndex].sailTexture;
+				int currentTexture = (int)cloths[clothIndex].clothTexture;
 				renderedToSortedNative[numAddedCloths] = i;
 				textureSortedClothsNative[numAddedCloths++] = clothIndex;
 				numSidesPerGroup.Add(cloths[clothIndex].isDoubleSided ? 2 : 1);
 
 				for (int j = i + 1; j < numActiveCloths; j++) {
 
-					if ((int)cloths[sortedClothIndicesNative[j]].sailTexture == currentTexture) {
+					if ((int)cloths[sortedClothIndicesNative[j]].clothTexture == currentTexture) {
 
 						renderedToSortedNative[numAddedCloths] = j;
 						textureSortedClothsNative[numAddedCloths++] = sortedClothIndicesNative[j];
@@ -1104,7 +1114,7 @@ public class ClothDispatcher : MonoBehaviour
 			sideToInstanceBuffers[i].SetData(sideToInstanceNative);
 
 			matProps[i] = new MaterialPropertyBlock();
-			matProps[i].SetTexture("_BaseMap", textures[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].sailTexture]);
+			matProps[i].SetTexture("_BaseMap", textures[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothTexture]);
 			matProps[i].SetBuffer("TriangleLocalStartIndex", renderedTriangleLocalStartIndexBuffers[i]);
 			matProps[i].SetBuffer("TriangleOffsets", renderedTriangleOffsetsBuffers[i]);
 			matProps[i].SetBuffer("SideToInstance", sideToInstanceBuffers[i]);
@@ -1239,7 +1249,7 @@ public class ClothDispatcher : MonoBehaviour
 		if (localWindVectorsNative.IsCreated) localWindVectorsNative.Dispose();
 		if (windForcesNative.IsCreated) windForcesNative.Dispose();
 
-		ComputeHelper.Release(xBuffer, normalsBuffer, trianglesBuffer, uvBuffer, vBuffer, wBuffer, pBuffer, stepVelocityBuffer, gravityVectorBuffer, windVectorBuffer, startIndicesBuffer, substepsBuffer, stretchingAlphaBuffer, bendingAlphaBuffer, stepTimeBuffer, dampingBuffer, maxVelocityBuffer, vertexToTrianglesBuffer, triangleNormalsBuffer, dragFactorBuffer, windForceBuffer);
+		ComputeHelper.Release(xBuffer, normalsBuffer, trianglesBuffer, uvBuffer, vBuffer, wBuffer, pBuffer, stepVelocityBuffer, gravityVectorBuffer, windVectorBuffer, startIndicesBuffer, substepsBuffer, stretchingAlphaBuffer, bendingAlphaBuffer, stepTimeBuffer, dampingBuffer, maxVelocityBuffer, vertexToTrianglesBuffer, triangleNormalsBuffer, dragFactorBuffer, windForceBuffer, pinnedVertBuffer);
 		ComputeHelper.Release(stretchingIDsBuffers);
 		ComputeHelper.Release(d0Buffers);
 		ComputeHelper.Release(bendingIDsBuffers);
