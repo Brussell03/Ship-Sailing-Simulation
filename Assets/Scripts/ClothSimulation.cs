@@ -18,6 +18,7 @@ public class ClothSimulation : MonoBehaviour
 	[Range(3, 30)]
 	public int substeps = 5;
 	public float thickness = 0.004f; // m
+	public float wScale = 0.0005f;
 	public bool handleCollisions = true;
 	public bool applyGravity = true;
 	public bool applyWind = true;
@@ -189,7 +190,7 @@ public class ClothSimulation : MonoBehaviour
 
 		if (partialSums.IsCreated) partialSums.Dispose();
 
-		Debug.Log("Total Wind Force: " + windForceSum);
+		Debug.Log("Total Wind Force: " + windForceSum.magnitude);
 	}
 
 	private void SolveCollisions(Vector3[] p) {
@@ -287,7 +288,6 @@ public class ClothSimulation : MonoBehaviour
 
 		numOneSidedVerts = vertexCount;
 
-		float wScale = 0.0005f;
 		float cellArea = (width * height * (1 + compression) * (1 + compression)) / (subdivisions * subdivisions);
 		float invCellMass = wScale / (density * thickness * cellArea);
 		//float maxW = 0f; // For normalization

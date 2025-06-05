@@ -35,7 +35,7 @@ StructuredBuffer<uint> stretchingIDs;
 StructuredBuffer<uint> bendingIDs;
 StructuredBuffer<float> d0;
 StructuredBuffer<float> dihedral0;
-RWStructuredBuffer<float3> stepVelocity;
+RWStructuredBuffer<float3> stepVelocityAndPrevX;
 StructuredBuffer<float3> gravityVector;
 StructuredBuffer<float3> windVector;
 StructuredBuffer<uint> startIndex;
@@ -88,8 +88,14 @@ void UpdateVelocity (uint3 id : SV_DispatchThreadID)
     if (globalSubstep >= substeps[clothIndex])
         return;
     
-    v[id.x] = (p[id.x] - x[id.x] - (w[id.x] == 0 ? stepVelocity[id.x] : 0)) / stepTime[clothIndex];
+    v[id.x] = (p[id.x] - x[id.x] - (w[id.x] == 0 ? stepVelocityAndPrevX[id.x] : 0)) / stepTime[clothIndex];
     v[id.x] *= (1 - damping[clothIndex] / substeps[clothIndex]); // Damp Velocities
+    
+    if (w[id.x] != 0)
+    {
+        stepVelocityAndPrevX[id.x] = x[id.x];
+    }
+    
     x[id.x] = p[id.x];
 }
 
@@ -106,20 +112,22 @@ void PredictPosition (uint3 id : SV_DispatchThreadID)
     
     if (anchored == 0 && globalSubstep == 0)
     {
-        stepVelocity[id.x] = (pinnedVertPos[id.x] - x[id.x]) / substeps[clothIndex];
+        stepVelocityAndPrevX[id.x] = (pinnedVertPos[id.x] - x[id.x]) / substeps[clothIndex];
     }
     
     windForce[id.x] = float3(0.0f, 0.0f, 0.0f);
     
-    if (length(windVector[clothIndex]) != 0)
+    float3 adjWindVector = windVector[clothIndex] - (x[id.x] - stepVelocityAndPrevX[id.x]);
+    
+    if (w[id.x] != 0 && length(adjWindVector) != 0)
     {
-        float3 windNormal = normalize(windVector[clothIndex]);
+        float3 windNormal = normalize(adjWindVector);
     
         float3 vertexNormal = dot(windNormal, normals[id.x]) < 0 ? -normals[id.x] : normals[id.x];
-        float windSpeedNormal = dot(windVector[clothIndex], vertexNormal);
+        float windSpeedNormal = dot(adjWindVector, vertexNormal);
     
         float3 vertexShearNormal = normalize(windNormal - vertexNormal);
-        float windSpeedShear = dot(windVector[clothIndex], vertexShearNormal);
+        float windSpeedShear = dot(adjWindVector, vertexShearNormal);
     
         float3 forceNormal = dragCoeffPerp * windSpeedNormal * windSpeedNormal * vertexNormal;
         float3 forceShear = dragCoeffShear * windSpeedShear * windSpeedShear * vertexShearNormal;
@@ -140,7 +148,7 @@ void PredictPosition (uint3 id : SV_DispatchThreadID)
         v[id.x] = ((sqrMagnitude > 0.0f) ? (v[id.x] / sqrt(sqrMagnitude)) : float3(0.0f, 0.0f, 0.0f)) * maxVelocity[clothIndex];
     }
     
-    p[id.x] = x[id.x] + stepTime[clothIndex] * v[id.x] + (w[id.x] == 0 ? stepVelocity[id.x] : 0);
+    p[id.x] = x[id.x] + stepTime[clothIndex] * v[id.x] + (w[id.x] == 0 ? stepVelocityAndPrevX[id.x] : 0);
 
 }
 

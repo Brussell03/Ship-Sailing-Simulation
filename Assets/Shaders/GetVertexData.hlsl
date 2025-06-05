@@ -6,10 +6,8 @@ StructuredBuffer<float3> Vertices;
 StructuredBuffer<int> Triangles;
 StructuredBuffer<float3> Normals;
 StructuredBuffer<float2> UVs;
-StructuredBuffer<float4x4> InstanceTransforms;
 StructuredBuffer<int> TriangleOffsets;
 StructuredBuffer<int> TriangleLocalStartIndex;
-StructuredBuffer<int> SideToInstance;
 
 uint numSides;
 uint oneSidedNumTriangles;
@@ -40,7 +38,6 @@ void GetVertexData_float(uint vertexID : SV_VertexID, out float3 position, out f
     }
     
     uint offsetID = vertexID + TriangleOffsets[sideID] - TriangleLocalStartIndex[sideID];
-    uint instanceID = SideToInstance[sideID];
     
     uint index = Triangles[offsetID];
     

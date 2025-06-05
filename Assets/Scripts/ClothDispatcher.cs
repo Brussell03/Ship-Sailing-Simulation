@@ -23,6 +23,7 @@ public class ClothDispatcher : MonoBehaviour
 	public float windSpeed = 1f; // m/s
 	[Min(1)]
 	public int projectionIterations = 3;
+	[Range(0, 1)] public float windChaos = 0.1f;
 	public bool isSimulating = true;
 	public bool isRendering = true;
 	public bool isReadingBackMesh = false;
@@ -79,10 +80,8 @@ public class ClothDispatcher : MonoBehaviour
 	ComputeBuffer triangleNormalsBuffer;
 	ComputeBuffer uvBuffer;
 	GraphicsBuffer[] commandBuffers;
-	GraphicsBuffer transformMatrixBuffer;
 	ComputeBuffer[] renderedTriangleLocalStartIndexBuffers;
 	ComputeBuffer[] renderedTriangleOffsetsBuffers;
-	ComputeBuffer[] sideToInstanceBuffers;
 	ComputeBuffer dragFactorBuffer;
 	ComputeBuffer windForceBuffer;
 	ComputeBuffer pinnedVertBuffer;
@@ -117,7 +116,6 @@ public class ClothDispatcher : MonoBehaviour
 	NativeArray<int> renderedTriangleOffsetsNative;
 	NativeArray<int> renderedToSortedNative;
 	NativeArray<int> activeBackTriangleStartIndexNative;
-	NativeArray<int> sideToInstanceNative;
 	NativeArray<Vector3> stepVelocitiesNative;
 	NativeArray<Vector3> localGravityVectorsNative;
 	NativeArray<Vector3> localWindVectorsNative;
@@ -138,6 +136,11 @@ public class ClothDispatcher : MonoBehaviour
 	List<int> textureGroupLastIndex = new List<int>();
 	List<int> textureGroupFirstIndex = new List<int>();
 	List<int> numSidesPerGroup = new List<int>();
+
+	[HideInInspector] public bool refreshAllQueued = true;
+	[HideInInspector] public bool refreshRenderingQueued = true;
+	[HideInInspector] public bool refreshSimulationQueued = true;
+	[HideInInspector] public bool numClothsChanged = false;
 
 	bool buffersGenerated = false;
 	const int stretchBatches = 6;
@@ -242,7 +245,16 @@ public class ClothDispatcher : MonoBehaviour
 				localGravityVectorsNative[i] = (gravityActive && applyGravityNative[i]) ? Physics.gravity : Vector3.zero;
 
 				// Wind Velocity, Velocity
-				localWindVectorsNative[i] = (windActive && applyWindNative[i]) ? transform.forward * windSpeed * UnityEngine.Random.Range(0.9f, 1.1f) + Vector3.up * UnityEngine.Random.Range(-1f, 1f) + Vector3.right * UnityEngine.Random.Range(-1f, 1f) : Vector3.zero;
+				if (windActive) {
+					float time = Time.realtimeSinceStartup;
+					float frequencyFactor = Mathf.PingPong(time, UnityEngine.Random.Range(-0.2f, 0.2f));
+					float chaosMagnitude = Mathf.Sin(time * 1f * frequencyFactor) / 2f;
+					float verticalFactor = Mathf.Sin(time * 1f * frequencyFactor + Mathf.PingPong(time, UnityEngine.Random.Range(5f, 20f)));
+					float horizontalFactor = Mathf.Sin(time * 1f * frequencyFactor + Mathf.PingPong(time, UnityEngine.Random.Range(5f, 20f)));
+					localWindVectorsNative[i] = applyWindNative[i] ? transform.forward * windSpeed * ((1f - windChaos / 4f) + chaosMagnitude * windChaos) + (transform.up * verticalFactor + transform.right * horizontalFactor) * chaosMagnitude * windChaos * windSpeed * 0.5f : Vector3.zero;
+				} else {
+					localWindVectorsNative[i] = Vector3.zero;
+				}
 			}
 
 			for (int i = 0; i < cloths.Length; i++) {
@@ -282,10 +294,11 @@ public class ClothDispatcher : MonoBehaviour
 
 	void Update() {
 
-		if (!buffersGenerated) {
-			Refresh();
-			return;
+		if (refreshAllQueued) {
+			RefreshAll();
 		}
+
+		if (!buffersGenerated) return;
 
 
 		if (isReadingBackMesh && pendingMeshReadback) {
@@ -361,6 +374,8 @@ public class ClothDispatcher : MonoBehaviour
 							UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
 						}
 					}
+
+					if (windForcesNative.IsCreated) windForcesNative.Dispose();
 				}
 
 				pendingForceReadback = false;
@@ -369,14 +384,6 @@ public class ClothDispatcher : MonoBehaviour
 
 		// Render cloths
 		if (isRendering && numRenderedCloths > 0) {
-			Matrix4x4[] instanceMatrices = new Matrix4x4[numActiveCloths];
-			for (int i = 0; i < numActiveCloths; i++) {
-				instanceMatrices[i] = cloths[sortedClothIndicesNative[i]].transform.localToWorldMatrix;
-			}
-
-			transformMatrixBuffer.SetData(instanceMatrices);
-			clothMaterial.SetBuffer("InstanceTransforms", transformMatrixBuffer);
-
 			//Graphics.RenderPrimitivesIndirect(rp, MeshTopology.Triangles, commandBuffer, commandCount);
 
 			for (int i = 0; i < commandBuffers.Length; i++) {
@@ -447,8 +454,14 @@ public class ClothDispatcher : MonoBehaviour
 		}
 	}
 
-	private void Refresh() {
+	private void RefreshAll() {
 		buffersGenerated = false;
+
+		if (numClothsChanged || cloths == null) {
+			FindCloths();
+
+			numClothsChanged = false;
+		}
 
 		UpdateClothInfo();
 
@@ -463,13 +476,61 @@ public class ClothDispatcher : MonoBehaviour
 		}
 
 		buffersGenerated = true;
+		refreshAllQueued = false;
+	}
+
+	private void RefreshSimulation() {
+		buffersGenerated = false;
+
+		if (numClothsChanged || cloths == null) {
+			FindCloths();
+			RefreshAll();
+
+			numClothsChanged = false;
+			return;
+		}
+
+		UpdateClothInfo();
+
+		if (!UpdateSimulationBuffers()) {
+			Debug.Log("No simulated cloths");
+			return;
+		}
+
+		buffersGenerated = true;
+		refreshSimulationQueued = false;
+	}
+
+	private void RefreshRendering() {
+		buffersGenerated = false;
+
+		if (numClothsChanged || cloths == null) {
+			FindCloths();
+			RefreshAll();
+
+			numClothsChanged = false;
+			return;
+		}
+
+		UpdateClothInfo();
+
+		if (!UpdateRenderingBuffers()) {
+			Debug.Log("No rendered cloths");
+			return;
+		}
+
+		buffersGenerated = true;
+		refreshRenderingQueued = false;
+	}
+
+	private void FindCloths() {
+		// Finds all Cloths (Inactive included)
+		cloths = Resources.FindObjectsOfTypeAll<ClothSimulation>();
 	}
 
 	private void UpdateClothInfo() {
-		// Finds all Cloths (Inactive included)
-		cloths = Resources.FindObjectsOfTypeAll<ClothSimulation>();
+		// Reset cloth information
 
-		// Record cloth information
 		totalVerts = 0;
 		numActiveCloths = 0;
 		numSimulatedCloths = 0;
@@ -485,6 +546,8 @@ public class ClothDispatcher : MonoBehaviour
 		numRenderedVerts = 0;
 		numTrianglesTotal = 0;
 		numOneSidedTrianglesTotal = 0;
+
+		// Record cloth information
 
 		for (int i = 0; i < cloths.Length; i++) {
 			clothsLastPosition[i] = cloths[i].transform.position;
@@ -519,8 +582,8 @@ public class ClothDispatcher : MonoBehaviour
 		numActiveCloths = activeClothIndices.Count;
 		numSimulatedCloths = simulatedClothIndices.Count;
 	}
-
-	private bool UpdateSimulationBuffers() {
+	
+	public bool UpdateSimulationBuffers() {
 		// New dispose function for just simulating natives & buffers
 
 		ReleaseSimulationBuffersAndNatives();
@@ -573,7 +636,6 @@ public class ClothDispatcher : MonoBehaviour
 		applyGravityNative = new NativeArray<bool>(numSimulatedCloths, Allocator.Persistent);
 		applyWindNative = new NativeArray<bool>(numSimulatedCloths, Allocator.Persistent);
 		numVertsPerSubstepNative = new NativeArray<int>(numSimulatedCloths, Allocator.Persistent);
-		windForcesNative = new NativeArray<Vector3>(numSimulatedVerts, Allocator.Persistent);
 
 		// Sort simulated cloths by number of substeps
 
@@ -951,8 +1013,8 @@ public class ClothDispatcher : MonoBehaviour
 		clothCompute.SetBuffer(solveBendingKernel6, "bendingIDs", bendingIDsBuffers[5]);
 
 		stepVelocityBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numSimulatedVerts);
-		clothCompute.SetBuffer(updateVelocityKernel, "stepVelocity", stepVelocityBuffer);
-		clothCompute.SetBuffer(predictPositionKernel, "stepVelocity", stepVelocityBuffer);
+		clothCompute.SetBuffer(updateVelocityKernel, "stepVelocityAndPrevX", stepVelocityBuffer);
+		clothCompute.SetBuffer(predictPositionKernel, "stepVelocityAndPrevX", stepVelocityBuffer);
 
 		gravityVectorBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numSimulatedCloths);
 		windVectorBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numSimulatedCloths);
@@ -989,8 +1051,7 @@ public class ClothDispatcher : MonoBehaviour
 		clothCompute.SetBuffer(predictPositionKernel, "maxVelocity", maxVelocityBuffer);
 
 		clothCompute.SetInt("numTriangles", numSimulatedTriangles);
-		clothCompute.SetFloat("dragCoeffPerp", dragCoeffPerp);
-		clothCompute.SetFloat("dragCoeffShear", dragCoeffShear);
+		UpdateDragCoeff();
 
 		numStepsPerLoop.Add(substepsNative[numSimulatedCloths - 1]);
 		substepsIndexPerLoop.Add((numSimulatedCloths - 1));
@@ -1016,7 +1077,7 @@ public class ClothDispatcher : MonoBehaviour
 		return true; // Successful creation of buffers
 	}
 
-	private bool UpdateRenderingBuffers() {
+	public bool UpdateRenderingBuffers() {
 
 		textureGroupFirstIndex?.Clear();
 		textureGroupLastIndex?.Clear();
@@ -1071,13 +1132,11 @@ public class ClothDispatcher : MonoBehaviour
 		matProps = new MaterialPropertyBlock[numTextureGroups];
 		renderedTriangleLocalStartIndexBuffers = new ComputeBuffer[numTextureGroups];
 		renderedTriangleOffsetsBuffers = new ComputeBuffer[numTextureGroups];
-		sideToInstanceBuffers = new ComputeBuffer[numTextureGroups];
 
 		for (int i = 0; i < numTextureGroups; i++) {
 
 			renderedTriangleLocalStartIndexNative = new NativeArray<int>(numSidesPerGroup[i], Allocator.Temp);
 			renderedTriangleOffsetsNative = new NativeArray<int>(numSidesPerGroup[i], Allocator.Temp);
-			sideToInstanceNative = new NativeArray<int>(numSidesPerGroup[i], Allocator.Temp);
 
 			int numTrianglesInGroup = 0;
 
@@ -1085,7 +1144,6 @@ public class ClothDispatcher : MonoBehaviour
 			for (int j = textureGroupFirstIndex[i]; j < textureGroupLastIndex[i] + 1; j++) {
 				int clothIndex = textureSortedClothsNative[j];
 
-				sideToInstanceNative[sideCount] = renderedToSortedNative[j];
 				renderedTriangleLocalStartIndexNative[sideCount] = numTrianglesInGroup;
 				renderedTriangleOffsetsNative[sideCount] = activeTriangleStartIndexNative[renderedToSortedNative[j]];
 
@@ -1094,7 +1152,6 @@ public class ClothDispatcher : MonoBehaviour
 				sideCount++;
 
 				if (cloths[clothIndex].isDoubleSided) {
-					sideToInstanceNative[sideCount] = renderedToSortedNative[j];
 					renderedTriangleLocalStartIndexNative[sideCount] = numTrianglesInGroup;
 					renderedTriangleOffsetsNative[sideCount] = activeBackTriangleStartIndexNative[renderedToSortedNative[j]] + numOneSidedTrianglesTotal * 3;
 					numTrianglesInGroup += cloths[clothIndex].numOneSidedTriangles * 3;
@@ -1110,14 +1167,10 @@ public class ClothDispatcher : MonoBehaviour
 			renderedTriangleOffsetsBuffers[i] = ComputeHelper.CreateStructuredBuffer<int>(numSidesPerGroup[i]);
 			renderedTriangleOffsetsBuffers[i].SetData(renderedTriangleOffsetsNative);
 
-			sideToInstanceBuffers[i] = ComputeHelper.CreateStructuredBuffer<int>(numSidesPerGroup[i]);
-			sideToInstanceBuffers[i].SetData(sideToInstanceNative);
-
 			matProps[i] = new MaterialPropertyBlock();
 			matProps[i].SetTexture("_BaseMap", textures[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothTexture]);
 			matProps[i].SetBuffer("TriangleLocalStartIndex", renderedTriangleLocalStartIndexBuffers[i]);
 			matProps[i].SetBuffer("TriangleOffsets", renderedTriangleOffsetsBuffers[i]);
-			matProps[i].SetBuffer("SideToInstance", sideToInstanceBuffers[i]);
 			matProps[i].SetInt("numSides", sideCount);
 
 			GraphicsBuffer.IndirectDrawArgs[] commandData = new GraphicsBuffer.IndirectDrawArgs[1];
@@ -1131,8 +1184,6 @@ public class ClothDispatcher : MonoBehaviour
 			commandBuffers[i].SetData(commandData);
 
 		}
-
-		transformMatrixBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, numActiveCloths, Marshal.SizeOf(typeof(Matrix4x4)));
 
 		clothMaterial.SetInt("oneSidedNumTriangles", numOneSidedTrianglesTotal * 3);
 		clothMaterial.SetTexture("_BaseMap", textures[0]);
@@ -1192,14 +1243,101 @@ public class ClothDispatcher : MonoBehaviour
 		return true;
 	}
 
+	public void UpdateInverseMass() {
+		if (numSimulatedVerts == 0) return;
+
+		wBuffer?.Release();
+
+		wNative = new NativeArray<float>(numSimulatedVerts, Allocator.Temp);
+
+		for (int i = 0; i < numSimulatedCloths; i++) {
+			int clothIndex = sortedClothIndicesNative[i];
+
+			unsafe {
+				// Copy Inverse Masses
+				int size = Marshal.SizeOf(typeof(float)) * cloths[clothIndex].numOneSidedVerts;
+				IntPtr sourcePtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[clothIndex].w, 0);
+				IntPtr destPtr = (IntPtr)((float*)wNative.GetUnsafePtr() + activeVertexStartIndexNative[i]); // Calculate offset for the subset
+				UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
+			}
+		}
+
+		wBuffer = ComputeHelper.CreateStructuredBuffer<float>(numSimulatedVerts);
+		wBuffer.SetData(wNative);
+		clothCompute.SetBuffer(updateVelocityKernel, "w", wBuffer);
+		clothCompute.SetBuffer(predictPositionKernel, "w", wBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel1, "w", wBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel2, "w", wBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel3, "w", wBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel4, "w", wBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel5, "w", wBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel6, "w", wBuffer);
+		clothCompute.SetBuffer(solveBendingKernel1, "w", wBuffer);
+		clothCompute.SetBuffer(solveBendingKernel2, "w", wBuffer);
+		clothCompute.SetBuffer(solveBendingKernel3, "w", wBuffer);
+		clothCompute.SetBuffer(solveBendingKernel4, "w", wBuffer);
+		clothCompute.SetBuffer(solveBendingKernel5, "w", wBuffer);
+		clothCompute.SetBuffer(solveBendingKernel6, "w", wBuffer);
+
+		wNative.Dispose();
+	}
+
+	public void UpdateConstraintAlphas() {
+		if (numSimulatedVerts == 0) return;
+
+		stretchingAlphaBuffer?.Release();
+		bendingAlphaBuffer?.Release();
+
+		stretchingAlphaNative = new NativeArray<float>(numSimulatedCloths, Allocator.Temp);
+		bendingAlphaNative = new NativeArray<float>(numSimulatedCloths, Allocator.Temp);
+
+		for (int i = 0; i < numSimulatedCloths; i++) {
+			int clothIndex = sortedClothIndicesNative[i];
+
+			float dt_step = Time.fixedDeltaTime / substepsNative[i];
+			stretchingAlphaNative[i] = cloths[clothIndex].stretchingCompliance / (dt_step * dt_step);
+			bendingAlphaNative[i] = cloths[clothIndex].bendingCompliance / (dt_step * dt_step);
+		}
+
+		stretchingAlphaBuffer = ComputeHelper.CreateStructuredBuffer<float>(numSimulatedCloths);
+		stretchingAlphaBuffer.SetData(stretchingAlphaNative);
+		clothCompute.SetBuffer(solveStretchingKernel1, "stretchingAlpha", stretchingAlphaBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel2, "stretchingAlpha", stretchingAlphaBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel3, "stretchingAlpha", stretchingAlphaBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel4, "stretchingAlpha", stretchingAlphaBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel5, "stretchingAlpha", stretchingAlphaBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel6, "stretchingAlpha", stretchingAlphaBuffer);
+
+		bendingAlphaBuffer = ComputeHelper.CreateStructuredBuffer<float>(numSimulatedCloths);
+		bendingAlphaBuffer.SetData(bendingAlphaNative);
+		clothCompute.SetBuffer(solveBendingKernel1, "bendingAlpha", bendingAlphaBuffer);
+		clothCompute.SetBuffer(solveBendingKernel2, "bendingAlpha", bendingAlphaBuffer);
+		clothCompute.SetBuffer(solveBendingKernel3, "bendingAlpha", bendingAlphaBuffer);
+		clothCompute.SetBuffer(solveBendingKernel4, "bendingAlpha", bendingAlphaBuffer);
+		clothCompute.SetBuffer(solveBendingKernel5, "bendingAlpha", bendingAlphaBuffer);
+		clothCompute.SetBuffer(solveBendingKernel6, "bendingAlpha", bendingAlphaBuffer);
+
+		stretchingAlphaNative.Dispose();
+		bendingAlphaNative.Dispose();
+	}
+
+	public void UpdateDragCoeff() {
+		clothCompute.SetFloat("dragCoeffPerp", dragCoeffPerp);
+		clothCompute.SetFloat("dragCoeffShear", dragCoeffShear);
+	}
+
 	void OnDestroy() {
 		Release();
 		DisposeNatives();
+
+		buffersGenerated = false;
 	}
 
 	private void OnDisable() {
 		Release();
 		DisposeNatives();
+
+		buffersGenerated = false;
 	}
 
 	private void OnEnable() {
@@ -1211,7 +1349,6 @@ public class ClothDispatcher : MonoBehaviour
 	private void DisposeTempRenderingNatives() {
 		if (textureSortedClothsNative.IsCreated) textureSortedClothsNative.Dispose();
 		if (renderedToSortedNative.IsCreated) renderedToSortedNative.Dispose();
-		if (sideToInstanceNative.IsCreated) sideToInstanceNative.Dispose();
 		if (renderedTriangleLocalStartIndexNative.IsCreated) renderedTriangleLocalStartIndexNative.Dispose();
 		if (renderedTriangleOffsetsNative.IsCreated) renderedTriangleOffsetsNative.Dispose();
 	}
@@ -1247,7 +1384,6 @@ public class ClothDispatcher : MonoBehaviour
 		if (stepVelocitiesNative.IsCreated) stepVelocitiesNative.Dispose();
 		if (localGravityVectorsNative.IsCreated) localGravityVectorsNative.Dispose();
 		if (localWindVectorsNative.IsCreated) localWindVectorsNative.Dispose();
-		if (windForcesNative.IsCreated) windForcesNative.Dispose();
 
 		ComputeHelper.Release(xBuffer, normalsBuffer, trianglesBuffer, uvBuffer, vBuffer, wBuffer, pBuffer, stepVelocityBuffer, gravityVectorBuffer, windVectorBuffer, startIndicesBuffer, substepsBuffer, stretchingAlphaBuffer, bendingAlphaBuffer, stepTimeBuffer, dampingBuffer, maxVelocityBuffer, vertexToTrianglesBuffer, triangleNormalsBuffer, dragFactorBuffer, windForceBuffer, pinnedVertBuffer);
 		ComputeHelper.Release(stretchingIDsBuffers);
@@ -1259,8 +1395,6 @@ public class ClothDispatcher : MonoBehaviour
 	private void ReleaseRenderingBuffers() {
 		ComputeHelper.Release(renderedTriangleLocalStartIndexBuffers);
 		ComputeHelper.Release(renderedTriangleOffsetsBuffers);
-		ComputeHelper.Release(sideToInstanceBuffers);
-		transformMatrixBuffer?.Release();
 
 		ReleaseCommandBuffers();
 	}
