@@ -15,6 +15,7 @@
 #pragma kernel SolveBendingBatch6
 #pragma kernel CalculateTriangleNormals
 #pragma kernel CalculateVertexNormals
+#pragma kernel SumWindForces
 
 struct AdjacentTriangleIndices
 {
@@ -30,12 +31,14 @@ RWStructuredBuffer<float3> x;
 RWStructuredBuffer<float3> v;
 RWStructuredBuffer<float3> p;
 RWStructuredBuffer<float3> normals;
+RWStructuredBuffer<float3> triangleNormals;
+//RWStructuredBuffer<float3> windForce;
+RWStructuredBuffer<float3> stepVelocityAndPrevX;
 StructuredBuffer<float> w;
 StructuredBuffer<uint> stretchingIDs;
 StructuredBuffer<uint> bendingIDs;
 StructuredBuffer<float> d0;
 StructuredBuffer<float> dihedral0;
-RWStructuredBuffer<float3> stepVelocityAndPrevX;
 StructuredBuffer<float3> gravityVector;
 StructuredBuffer<float3> windVector;
 StructuredBuffer<uint> startIndex;
@@ -46,17 +49,20 @@ StructuredBuffer<float> stepTime;
 StructuredBuffer<float> damping;
 StructuredBuffer<float> maxVelocity;
 StructuredBuffer<uint> triangles;
-RWStructuredBuffer<float3> triangleNormals;
 StructuredBuffer<AdjacentTriangleIndices> vertexToTriangle;
 StructuredBuffer<float> dragFactor; // 1/2 * density * Area
-RWStructuredBuffer<float3> windForce;
 StructuredBuffer<float3> pinnedVertPos;
+StructuredBuffer<int> vertToPinned;
 uint globalSubstep;
 uint numCloths;
+uint numVertices;
 uint projectionIterations;
 uint numTriangles;
 float dragCoeffPerp; // Drag Coefficient for Flow Perpendicular to Plate
 float dragCoeffShear; // Drag Coefficient for Flow Tangential to Plate
+
+RWStructuredBuffer<int3> clothWindForce;
+
 
 int GetClothIndex(uint3 id)
 {
@@ -79,11 +85,12 @@ int GetClothIndex(uint3 id)
     return clothIndex;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void UpdateVelocity (uint3 id : SV_DispatchThreadID)
 {
-    //if (id.x >= numVertices)
-    //    return;
+    if (id.x >= numVertices)
+        return;
+    
     uint clothIndex = GetClothIndex(id);
     if (globalSubstep >= substeps[clothIndex])
         return;
@@ -99,23 +106,30 @@ void UpdateVelocity (uint3 id : SV_DispatchThreadID)
     x[id.x] = p[id.x];
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void PredictPosition (uint3 id : SV_DispatchThreadID)
 {
-    //if (id.x >= numVertices)
-    //    return;
+    if (id.x >= numVertices)
+        return;
+    
     uint clothIndex = GetClothIndex(id);
     if (globalSubstep >= substeps[clothIndex])
         return;
     
     uint anchored = w[id.x] == 0 ? 0 : 1;
     
-    if (anchored == 0 && globalSubstep == 0)
+    if (globalSubstep == 0)
     {
-        stepVelocityAndPrevX[id.x] = (pinnedVertPos[id.x] - x[id.x]) / substeps[clothIndex];
+        if (anchored == 0)
+        {
+            stepVelocityAndPrevX[id.x] = (pinnedVertPos[vertToPinned[id.x]] - x[id.x]) / substeps[clothIndex];
+        }
+        
+        clothWindForce[clothIndex] = uint3(0, 0, 0);
     }
     
-    windForce[id.x] = float3(0.0f, 0.0f, 0.0f);
+    float3 windForce = float3(0.0f, 0.0f, 0.0f);
+    
     
     float3 adjWindVector = windVector[clothIndex] - (x[id.x] - stepVelocityAndPrevX[id.x]);
     
@@ -132,15 +146,18 @@ void PredictPosition (uint3 id : SV_DispatchThreadID)
         float3 forceNormal = dragCoeffPerp * windSpeedNormal * windSpeedNormal * vertexNormal;
         float3 forceShear = dragCoeffShear * windSpeedShear * windSpeedShear * vertexShearNormal;
         
-        windForce[id.x] = dragFactor[id.x] * (forceNormal + forceShear);
+        windForce = dragFactor[id.x] * (forceNormal + forceShear);
         //windForce = dragFactor[id.x] * (forceNormal + forceShear);
         
-        //InterlockedAdd(asint(totalWindForce[clothIndex].x), asint(windForce.x));
-        //InterlockedAdd(asint(totalWindForce[clothIndex].y), asint(windForce.y));
-        //InterlockedAdd(asint(totalWindForce[clothIndex].z), asint(windForce.z));
+        if (globalSubstep == substeps[clothIndex] - 1)
+        {
+            InterlockedAdd(clothWindForce[clothIndex].x, (int) round(windForce.x * 10000.0f));
+            InterlockedAdd(clothWindForce[clothIndex].y, (int) round(windForce.y * 10000.0f));
+            InterlockedAdd(clothWindForce[clothIndex].z, (int) round(windForce.z * 10000.0f));
+        }
     }
     
-    v[id.x] += stepTime[clothIndex] * (gravityVector[clothIndex] * anchored + windForce[id.x] * w[id.x]); // Applies gravity and wind
+    v[id.x] += stepTime[clothIndex] * (gravityVector[clothIndex] * anchored + windForce * w[id.x]); // Applies gravity and wind
 
     float sqrMagnitude = dot(v[id.x], v[id.x]);
     if (sqrMagnitude > maxVelocity[clothIndex] * maxVelocity[clothIndex])
@@ -152,11 +169,11 @@ void PredictPosition (uint3 id : SV_DispatchThreadID)
 
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void SolveStretchingBatch1(uint3 id : SV_DispatchThreadID)
 {
-    //if (id.x >= numVertices)
-    //    return;
+    if (id.x >= numVertices)
+        return;
     
     uint id0 = stretchingIDs[id.x * 2];
     
@@ -195,11 +212,11 @@ void SolveStretchingBatch1(uint3 id : SV_DispatchThreadID)
     p[id1] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void SolveStretchingBatch2(uint3 id : SV_DispatchThreadID)
 {
-    //if (id.x >= numVertices)
-    //    return;
+    if (id.x >= numVertices)
+        return;
     
     uint id0 = stretchingIDs[id.x * 2];
     
@@ -238,11 +255,11 @@ void SolveStretchingBatch2(uint3 id : SV_DispatchThreadID)
     p[id1] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void SolveStretchingBatch3(uint3 id : SV_DispatchThreadID)
 {
-    //if (id.x >= numVertices)
-    //    return;
+    if (id.x >= numVertices)
+        return;
     
     uint id0 = stretchingIDs[id.x * 2];
     
@@ -281,11 +298,11 @@ void SolveStretchingBatch3(uint3 id : SV_DispatchThreadID)
     p[id1] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void SolveStretchingBatch4(uint3 id : SV_DispatchThreadID)
 {
-    //if (id.x >= numVertices)
-    //    return;
+    if (id.x >= numVertices)
+        return;
     
     uint id0 = stretchingIDs[id.x * 2];
     
@@ -324,11 +341,11 @@ void SolveStretchingBatch4(uint3 id : SV_DispatchThreadID)
     p[id1] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void SolveStretchingBatch5(uint3 id : SV_DispatchThreadID)
 {
-    //if (id.x >= numVertices)
-    //    return;
+    if (id.x >= numVertices)
+        return;
     
     uint id0 = stretchingIDs[id.x * 2];
     
@@ -367,11 +384,11 @@ void SolveStretchingBatch5(uint3 id : SV_DispatchThreadID)
     p[id1] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void SolveStretchingBatch6(uint3 id : SV_DispatchThreadID)
 {
-    //if (id.x >= numVertices)
-    //    return;
+    if (id.x >= numVertices)
+        return;
     
     uint id0 = stretchingIDs[id.x * 2];
     
@@ -410,11 +427,11 @@ void SolveStretchingBatch6(uint3 id : SV_DispatchThreadID)
     p[id1] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void SolveBendingBatch1(uint3 id : SV_DispatchThreadID)
 {
-    //if (id.x >= numVertices)
-    //    return;
+    if (id.x >= numVertices)
+        return;
     
     uint id2 = bendingIDs[id.x * 4 + 2];
     
@@ -454,11 +471,11 @@ void SolveBendingBatch1(uint3 id : SV_DispatchThreadID)
     p[id3] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void SolveBendingBatch2(uint3 id : SV_DispatchThreadID)
 {
-    //if (id.x >= numVertices)
-    //    return;
+    if (id.x >= numVertices)
+        return;
     
     uint id2 = bendingIDs[id.x * 4 + 2];
     
@@ -498,11 +515,11 @@ void SolveBendingBatch2(uint3 id : SV_DispatchThreadID)
     p[id3] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void SolveBendingBatch3(uint3 id : SV_DispatchThreadID)
 {
-    //if (id.x >= numVertices)
-    //    return;
+    if (id.x >= numVertices)
+        return;
     
     uint id2 = bendingIDs[id.x * 4 + 2];
     
@@ -542,11 +559,11 @@ void SolveBendingBatch3(uint3 id : SV_DispatchThreadID)
     p[id3] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void SolveBendingBatch4(uint3 id : SV_DispatchThreadID)
 {
-    //if (id.x >= numVertices)
-    //    return;
+    if (id.x >= numVertices)
+        return;
     
     uint id2 = bendingIDs[id.x * 4 + 2];
     
@@ -586,11 +603,11 @@ void SolveBendingBatch4(uint3 id : SV_DispatchThreadID)
     p[id3] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void SolveBendingBatch5(uint3 id : SV_DispatchThreadID)
 {
-    //if (id.x >= numVertices)
-    //    return;
+    if (id.x >= numVertices)
+        return;
     
     uint id2 = bendingIDs[id.x * 4 + 2];
     
@@ -630,11 +647,11 @@ void SolveBendingBatch5(uint3 id : SV_DispatchThreadID)
     p[id3] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void SolveBendingBatch6(uint3 id : SV_DispatchThreadID)
 {
-    //if (id.x >= numVertices)
-    //    return;
+    if (id.x >= numVertices)
+        return;
     
     uint id2 = bendingIDs[id.x * 4 + 2];
     
@@ -674,9 +691,12 @@ void SolveBendingBatch6(uint3 id : SV_DispatchThreadID)
     p[id3] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void CalculateTriangleNormals(uint3 id : SV_DispatchThreadID)
 {
+    if (id.x >= numTriangles)
+        return;
+    
     uint id0 = triangles[id.x * 3];
     uint id1 = triangles[id.x * 3 + 1];
     uint id2 = triangles[id.x * 3 + 2];
@@ -686,9 +706,12 @@ void CalculateTriangleNormals(uint3 id : SV_DispatchThreadID)
     triangleNormals[id.x] = normalize(cross(e2, e1));
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void CalculateVertexNormals(uint3 id : SV_DispatchThreadID)
 {
+    if (id.x >= numVertices)
+        return;
+    
     uint id0 = vertexToTriangle[id.x].id0;
     uint id1 = vertexToTriangle[id.x].id1;
     uint id2 = vertexToTriangle[id.x].id2;
@@ -744,4 +767,17 @@ void CalculateVertexNormals(uint3 id : SV_DispatchThreadID)
         //normals[id.x] = float3(0.0f, 1.0f, 0.0f);
     }
     
+}
+
+[numthreads(64, 1, 1)]
+void SumWindForces(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numVertices)
+        return;
+    
+    uint clothIndex = GetClothIndex(id);
+    
+    //InterlockedAdd(clothWindForce[clothIndex].x, (int) round(windForce[id.x].x * 10000.0f));
+    //InterlockedAdd(clothWindForce[clothIndex].y, (int) round(windForce[id.x].y * 10000.0f));
+    //InterlockedAdd(clothWindForce[clothIndex].z, (int) round(windForce[id.x].z * 10000.0f));
 }

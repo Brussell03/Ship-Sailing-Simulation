@@ -3,25 +3,45 @@ using System.Collections;
 using System.Collections.Generic;
 using Unity.Burst;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
-using Unity.VisualScripting;
+using Unity.Mathematics;
 using UnityEngine;
 
-[RequireComponent(typeof(MeshFilter)), RequireComponent(typeof(MeshRenderer)), ExecuteAlways]
+[RequireComponent(typeof(MeshFilter)), RequireComponent(typeof(MeshRenderer)), RequireComponent(typeof(Rigidbody)), ExecuteAlways]
 public class ClothSimulation : MonoBehaviour
 {
 	[Range(0, 0.0001f)]
 	public float stretchingCompliance = 0f;
 	[Range(0, 10)]
-	public float bendingCompliance = 0.5f;
-	public float density = 0.1f; // kg / m^2
+	public float bendingCompliance = 0f;
+	public float density = 100f; // kg / m^2
 	[Range(3, 30)]
 	public int substeps = 5;
-	public float thickness = 0.004f; // m
-	public float wScale = 0.0005f;
+	public float thickness = 0.001f; // m
+	public float wScale = 1f;
 	public bool handleCollisions = true;
-	public bool applyGravity = true;
-	public bool applyWind = true;
+	[SerializeField]
+	private bool _applyGravity = true;
+
+	public bool applyGravity {
+		get { return _applyGravity; }
+		set {
+			if (_applyGravity != value) {
+				_applyGravity = value;
+
+				Debug.Log($"isSimulating changed to: {_applyGravity}");
+				if (personalRb != null) personalRb.useGravity = value;
+
+#if UNITY_EDITOR
+				UnityEditor.EditorUtility.SetDirty(this);
+#endif
+			}
+		}
+	}
+	public bool simulateWind = true;
+	public bool applyWindToPinned = true;
+	public Rigidbody forceRigidbody;
 
 	public float width = 10f;
 	public float height = 10f;
@@ -30,8 +50,44 @@ public class ClothSimulation : MonoBehaviour
 	public float damping = 0.03f;
 	[Range (-0.5f, 0.5f)] public float compression = 0f;
 	public bool isDoubleSided = true;
-	public bool isSimulating = true;
-	public bool isRendering = true;
+
+	[SerializeField]
+	private bool _isSimulating = true;
+
+	public bool isSimulating {
+		get { return _isSimulating; }
+		set {
+			if (_isSimulating != value) {
+				_isSimulating = value;
+
+				Debug.Log($"isSimulating changed to: {_isSimulating}");
+				if (dispatcher != null) dispatcher.refreshAllQueued = true;
+
+#if UNITY_EDITOR
+				UnityEditor.EditorUtility.SetDirty(this);
+#endif
+			}
+		}
+	}
+
+	[SerializeField]
+	private bool _isRendering = true;
+
+	public bool isRendering {
+		get { return _isRendering; }
+		set {
+			if (_isRendering != value) {
+				_isRendering = value;
+
+				Debug.Log($"isRendering changed to: {_isRendering}");
+				if (dispatcher != null) dispatcher.refreshRenderingQueued = true;
+
+#if UNITY_EDITOR
+				UnityEditor.EditorUtility.SetDirty(this);
+#endif
+			}
+		}
+	}
 
 	[HideInInspector] public Vector3[] x { get; set; }
 	[HideInInspector] public Vector3[] normals { get; set; }
@@ -46,7 +102,6 @@ public class ClothSimulation : MonoBehaviour
 	private int[] neighbors;
 	[HideInInspector] public int[][] stretchingIDs { get; set; }
 	[HideInInspector] public float[] dragFactor { get; set; }
-	[HideInInspector] public NativeArray<Vector3> windForcesNative;
 	public bool isInitialized { get; set; } = false;
 
 	public MeshFilter meshFilter { get; set; }
@@ -71,6 +126,10 @@ public class ClothSimulation : MonoBehaviour
 	public int numOneSidedVerts { get; private set; }
 	public int numOneSidedTriangles { get; private set; }
 	public bool isActive { get; private set; }
+	public Vector3 positionOnReadback { get; set; }
+	public Vector3 windForce { get; set; }
+	public float mass { get; private set; }
+	public Rigidbody personalRb { get; private set; }
 
 	public enum ClothTexture : int {
 		BeachBall,
@@ -82,7 +141,7 @@ public class ClothSimulation : MonoBehaviour
 	public ClothTexture clothTexture;
 	private float airDensity = 1.287f; // kg/m^3
 
-	private NativeArray<Vector3> partialSums;
+	/*private NativeArray<Vector3> partialSums;
 
 	[BurstCompile]
 	public struct ParallelPartialSumJob : IJobParallelFor {
@@ -95,14 +154,17 @@ public class ClothSimulation : MonoBehaviour
 		public void Execute(int index) {
 			PartialSums[index / 64] += InputVectors[index];
 		}
-	}
+	}*/
 
 	// Start is called before the first frame update
 	void Start()
 	{
 		meshFilter = GetComponent<MeshFilter>();
 		meshRenderer = GetComponent<MeshRenderer>();
-		dispatcher = UnityEngine.Object.FindAnyObjectByType<ClothDispatcher>();
+		personalRb = GetComponent<Rigidbody>();
+		dispatcher = FindAnyObjectByType<ClothDispatcher>();
+		dispatcher.numClothsChanged = true;
+		dispatcher.refreshAllQueued = true;
 		//meshCollider = GetComponent<MeshCollider>();
 		isActive = true;
 
@@ -158,7 +220,6 @@ public class ClothSimulation : MonoBehaviour
 	}
 
 	private void FixedUpdate() {
-
 		//mesh.vertices = x;
 		//mesh.normals = normals;
 		//meshFilter.mesh = mesh;
@@ -170,7 +231,7 @@ public class ClothSimulation : MonoBehaviour
 			Debug.DrawRay(transform.TransformPoint(x[i]), transform.TransformDirection(normals[i]) / 10, i >= normals.Length / 2 ? Color.red : Color.blue);
 		}*/
 
-		int batchSize = 64;
+		/*int batchSize = 64;
 		int numPartialSums = (numOneSidedVerts + batchSize - 1) / batchSize; // Ceiling division
 
 		partialSums = new NativeArray<Vector3>(numPartialSums, Allocator.TempJob);
@@ -190,7 +251,17 @@ public class ClothSimulation : MonoBehaviour
 
 		if (partialSums.IsCreated) partialSums.Dispose();
 
-		Debug.Log("Total Wind Force: " + windForceSum.magnitude);
+		Debug.Log("Total Wind Force: " + windForceSum);*/
+
+		//Debug.Log("Total Wind Force: " + windForce);
+
+		if (applyWindToPinned && pinnedVertices != null && pinnedVertices.Count > 0 && forceRigidbody != null) {
+			Vector3 forcePerPinned = windForce / pinnedVertices.Count;
+
+			for (int i = 0; i < pinnedVertices.Count; i++) {
+				forceRigidbody.AddForceAtPosition(forcePerPinned, x[pinnedVertices[i]]);
+			}
+		}
 	}
 
 	private void SolveCollisions(Vector3[] p) {
@@ -263,6 +334,8 @@ public class ClothSimulation : MonoBehaviour
 	public void Init() {
 		if (!gameObject.activeInHierarchy) return;
 
+		positionOnReadback = transform.position;
+
 		// Calculate the number of vertices
 		int vertexCount = (subdivisions + 1) * (subdivisions + 1);
 
@@ -284,11 +357,13 @@ public class ClothSimulation : MonoBehaviour
 		w = new float[vertexCount];
 		restPos = new Vector3[vertexCount];
 		dragFactor = new float[vertexCount];
-		windForcesNative = new NativeArray<Vector3>(vertexCount, Allocator.Persistent);
 
 		numOneSidedVerts = vertexCount;
-
-		float cellArea = (width * height * (1 + compression) * (1 + compression)) / (subdivisions * subdivisions);
+		mass = width * height * (1f + compression) * thickness * density;
+		personalRb.mass = mass;
+		personalRb.useGravity = applyGravity;
+		
+		float cellArea = (width * height * (1 + compression) * (1f + compression)) / (subdivisions * subdivisions);
 		float invCellMass = wScale / (density * thickness * cellArea);
 		//float maxW = 0f; // For normalization
 
@@ -297,12 +372,12 @@ public class ClothSimulation : MonoBehaviour
 			for (int j = 0; j < subdivisions + 1; j++) {
 				int index = j + i * (subdivisions + 1);
 				x[index] = new Vector3((j * width) / subdivisions, 0, height - (i * height) / subdivisions);
-				uv[index] = new Vector2(((float)j) / subdivisions, 1 - ((float)i) / subdivisions);
+				uv[index] = new Vector2(((float)j) / subdivisions, 1f - ((float)i) / subdivisions);
 				restPos[index] = x[index];
 
 				if (isDoubleSided) {
 					x[vertexCount + index] = new Vector3((j * width) / subdivisions, 0, height - (i * height) / subdivisions);
-					uv[vertexCount + index] = new Vector2(((float)j) / subdivisions, 1 - ((float)i) / subdivisions);
+					uv[vertexCount + index] = new Vector2(((float)j) / subdivisions, 1f - ((float)i) / subdivisions);
 				}
 
 				if ((i == 0 && j == 0) || (i == subdivisions && j == 0) || (i == subdivisions && j == subdivisions) || (i == 0 && j == subdivisions)) {
@@ -618,7 +693,9 @@ public class ClothSimulation : MonoBehaviour
 		}
 
 		isInitialized = true;
+		dispatcher.refreshAllQueued = true;
 	}
+
 
 	private int[] FindTriNeighbors(int[] triangles) {
 
@@ -660,21 +737,35 @@ public class ClothSimulation : MonoBehaviour
 	}
 
 	void OnDestroy() {
-		if (windForcesNative.IsCreated) windForcesNative.Dispose();
+
+		isActive = false;
+		if (dispatcher == null) {
+			dispatcher = FindAnyObjectByType<ClothDispatcher>();
+		}
+
+		if (dispatcher != null) {
+			dispatcher.refreshAllQueued = true;
+		}
 	}
 
 	private void OnDisable() {
-		isActive = false;
 
-		if (windForcesNative.IsCreated) windForcesNative.Dispose();
+		isActive = false;
+		if (dispatcher == null) {
+			dispatcher = FindAnyObjectByType<ClothDispatcher>();
+		}
+
+		if (dispatcher != null) {
+			dispatcher.refreshAllQueued = true;
+		}
 	}
 
 	private void OnEnable() {
-		isActive = true;
-
 		if (isInitialized) {
-			windForcesNative = new NativeArray<Vector3>(numOneSidedVerts, Allocator.Persistent);
+			dispatcher.refreshAllQueued = true;
 		}
+
+		isActive = true;
 	}
 
 #if UNITY_EDITOR

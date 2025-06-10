@@ -6,7 +6,7 @@ using UnityEngine;
 [RequireComponent(typeof(TextMeshProUGUI))]
 public class FPS : MonoBehaviour {
 
-	public int maxFrames = 30;  //maximum frames to average over
+	public int maxFrames = 60;  //maximum frames to average over
 
 	private static int lastFPSCalculated = 0;
 	private List<float> fpsList = new List<float>();
