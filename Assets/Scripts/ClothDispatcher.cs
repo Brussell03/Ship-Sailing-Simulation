@@ -50,7 +50,6 @@ public class ClothDispatcher : MonoBehaviour
 	const int solveBendingKernel6 = 13;
 	const int calculateTriangleNormals = 14;
 	const int calculateVertexNormals = 15;
-	const int sumWindForces = 16;
 	#endregion
 
 	private
@@ -83,7 +82,6 @@ public class ClothDispatcher : MonoBehaviour
 	ComputeBuffer[] renderedTriangleLocalStartIndexBuffers;
 	ComputeBuffer[] renderedTriangleOffsetsBuffers;
 	ComputeBuffer dragFactorBuffer;
-	//ComputeBuffer windForceBuffer;
 	ComputeBuffer pinnedVertBuffer;
 	ComputeBuffer vertToPinnedBuffer;
 	ComputeBuffer clothWindForceBuffer;
@@ -274,7 +272,6 @@ public class ClothDispatcher : MonoBehaviour
 				clothsLastPosition[i] = cloths[i].transform.position;
 			}
 
-
 			windVectorBuffer.SetData(windVectorsNative);
 			pinnedVertBuffer.SetData(pinnedVertNative);
 
@@ -440,7 +437,6 @@ public class ClothDispatcher : MonoBehaviour
 
 		ComputeHelper.Dispatch(clothCompute, numOneSidedTrianglesTotal, kernelIndex: calculateTriangleNormals);
 		ComputeHelper.Dispatch(clothCompute, numSimulatedVerts, kernelIndex: calculateVertexNormals);
-		//ComputeHelper.Dispatch(clothCompute, numSimulatedVerts, kernelIndex: sumWindForces);
 	}
 
 
@@ -475,6 +471,7 @@ public class ClothDispatcher : MonoBehaviour
 		buffersGenerated = false;
 		simulationGenerated = false;
 		renderingGenerated = false;
+		pendingForceReadback = false;
 
 		if (numClothsChanged || cloths == null) {
 			FindCloths();
@@ -578,6 +575,7 @@ public class ClothDispatcher : MonoBehaviour
 					numSimulatedVerts += cloths[i].numOneSidedVerts;
 					numSimulatedTriangles += cloths[i].numOneSidedTriangles;
 					numPinnedVertices += cloths[i].pinnedVertices.Count;
+
 				}
 
 				if (cloths[i].isRendering) {
@@ -840,7 +838,7 @@ public class ClothDispatcher : MonoBehaviour
 					}
 				}
 
-				// Copy inverse mass and drag factors from individual cloths to combined array
+				// Copy from individual cloths to combined array
 				unsafe {
 					// Copy Inverse Masses
 					int size = Marshal.SizeOf(typeof(float)) * cloths[clothIndex].numOneSidedVerts;
@@ -877,10 +875,12 @@ public class ClothDispatcher : MonoBehaviour
 				// Create combined constraint information
 				for (int j = 0; j < stretchBatches; j++) {
 					d0[j].AddRange(cloths[clothIndex].d0[j]);
+
 				}
 
 				for (int j = 0; j < bendingBatches; j++) {
 					dihedral0[j].AddRange(cloths[clothIndex].dihedral0[j]);
+
 				}
 
 				for (int j = 0; j < stretchBatches; j++) {
@@ -1591,7 +1591,6 @@ public class ClothDispatcher : MonoBehaviour
 		if (stepVelocitiesNative.IsCreated) stepVelocitiesNative.Dispose();
 		if (windVectorsNative.IsCreated) windVectorsNative.Dispose();
 		if (pinnedVertNative.IsCreated) pinnedVertNative.Dispose();
-
 
 		ComputeHelper.Release(xBuffer, normalsBuffer, trianglesBuffer, uvBuffer, vBuffer, wBuffer, pBuffer, stepVelocityBuffer, gravityVectorBuffer, windVectorBuffer, startIndicesBuffer, substepsBuffer, stretchingAlphaBuffer, bendingAlphaBuffer, stepTimeBuffer, dampingBuffer, maxVelocityBuffer, vertexToTrianglesBuffer, triangleNormalsBuffer, dragFactorBuffer, pinnedVertBuffer, vertToPinnedBuffer, clothWindForceBuffer);
 		ComputeHelper.Release(stretchingIDsBuffers);

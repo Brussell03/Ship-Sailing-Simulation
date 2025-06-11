@@ -11,19 +11,14 @@ using UnityEngine;
 [RequireComponent(typeof(MeshFilter)), RequireComponent(typeof(MeshRenderer)), RequireComponent(typeof(Rigidbody)), ExecuteAlways]
 public class ClothSimulation : MonoBehaviour
 {
-	[Range(0, 0.0001f)]
-	public float stretchingCompliance = 0f;
-	[Range(0, 10)]
-	public float bendingCompliance = 0f;
-	public float density = 100f; // kg / m^2
-	[Range(3, 30)]
-	public int substeps = 5;
-	public float thickness = 0.001f; // m
+	[Range(0, 0.0001f)] public float stretchingCompliance = 0f;
+	[Range(0, 10)] public float bendingCompliance = 0f;
+	[Min(0.0000001f)] public float density = 100f; // kg / m^2
+	[Range(3, 30)] public int substeps = 5;
+	[Min(0.0000001f)] public float thickness = 0.001f; // m
 	public float wScale = 1f;
 	public bool handleCollisions = true;
-	[SerializeField]
-	private bool _applyGravity = true;
-
+	[SerializeField] private bool _applyGravity = true;
 	public bool applyGravity {
 		get { return _applyGravity; }
 		set {
@@ -50,10 +45,7 @@ public class ClothSimulation : MonoBehaviour
 	public float damping = 0.03f;
 	[Range (-0.5f, 0.5f)] public float compression = 0f;
 	public bool isDoubleSided = true;
-
-	[SerializeField]
-	private bool _isSimulating = true;
-
+	[SerializeField] private bool _isSimulating = true;
 	public bool isSimulating {
 		get { return _isSimulating; }
 		set {
@@ -69,10 +61,7 @@ public class ClothSimulation : MonoBehaviour
 			}
 		}
 	}
-
-	[SerializeField]
-	private bool _isRendering = true;
-
+	[SerializeField] private bool _isRendering = true;
 	public bool isRendering {
 		get { return _isRendering; }
 		set {
@@ -89,19 +78,19 @@ public class ClothSimulation : MonoBehaviour
 		}
 	}
 
-	[HideInInspector] public Vector3[] x { get; set; }
-	[HideInInspector] public Vector3[] normals { get; set; }
+	public Vector3[] x { get; set; }
+	public Vector3[] normals { get; set; }
 	private Vector3[] v;
-	[HideInInspector] public Vector2[] uv { get; set; }
+	public Vector2[] uv { get; set; }
 	private Vector3[] restPos;
-	[HideInInspector] public float[] w { get; set; }
-	[HideInInspector] public int[] triangles { get; set; }
-	[HideInInspector] public float[][] d0 { get; set; }
-	[HideInInspector] public float[][] dihedral0 { get; set; }
-	[HideInInspector] public int[][] bendingIDs { get; set; }
+	public float[] w { get; set; }
+	public int[] triangles { get; set; }
+	public float[][] d0 { get; set; }
+	public float[][] dihedral0 { get; set; }
+	public int[][] bendingIDs { get; set; }
 	private int[] neighbors;
-	[HideInInspector] public int[][] stretchingIDs { get; set; }
-	[HideInInspector] public float[] dragFactor { get; set; }
+	public int[][] stretchingIDs { get; set; }
+	public float[] dragFactor { get; set; }
 	public bool isInitialized { get; set; } = false;
 
 	public MeshFilter meshFilter { get; set; }
@@ -109,6 +98,8 @@ public class ClothSimulation : MonoBehaviour
 	[HideInInspector] public List<int>[] vertexToTriangles { get; private set; }
 	[HideInInspector, SerializeField] public List<int> _pinnedVertices = new List<int>();
 	public List<int> pinnedVertices => _pinnedVertices; // Read-only reference variable to _pinnedVertices
+	[HideInInspector, SerializeField] private Dictionary<int, Vector3> modifiedVertices = new Dictionary<int, Vector3>();
+
 	public List<Vector3> pinnedVertLocalPos { get; private set; } = new List<Vector3>();
 	[HideInInspector] public List<int> selectedVertices = new List<int>();
 	private MeshCollider meshCollider;
@@ -168,6 +159,8 @@ public class ClothSimulation : MonoBehaviour
 		//meshCollider = GetComponent<MeshCollider>();
 		isActive = true;
 
+		personalRb.constraints = RigidbodyConstraints.FreezeAll;
+
 		Init();
 
 		if (Application.isPlaying) {
@@ -197,8 +190,8 @@ public class ClothSimulation : MonoBehaviour
 
 			for (int i = 0; i < dihedral0.Length; i++) {
 				for (int j = 0; j < dihedral0[i].Length; j++) {
-					int id0 = bendingIDs[i][j * 4 + 2];
-					int id1 = bendingIDs[i][j * 4 + 3];
+					int id0 = bendingIDs[i][j * 2];
+					int id1 = bendingIDs[i][j * 2 + 1];
 
 					Vector3 p0 = x[id0];
 					Vector3 p1 = x[id1];
@@ -256,11 +249,11 @@ public class ClothSimulation : MonoBehaviour
 		//Debug.Log("Total Wind Force: " + windForce);
 
 		if (applyWindToPinned && pinnedVertices != null && pinnedVertices.Count > 0 && forceRigidbody != null) {
-			Vector3 forcePerPinned = windForce / pinnedVertices.Count;
+			/*Vector3 forcePerPinned = windForce / pinnedVertices.Count;
 
 			for (int i = 0; i < pinnedVertices.Count; i++) {
 				forceRigidbody.AddForceAtPosition(forcePerPinned, x[pinnedVertices[i]]);
-			}
+			}*/
 		}
 	}
 
@@ -337,28 +330,27 @@ public class ClothSimulation : MonoBehaviour
 		positionOnReadback = transform.position;
 
 		// Calculate the number of vertices
-		int vertexCount = (subdivisions + 1) * (subdivisions + 1);
+		numOneSidedVerts = (subdivisions + 1) * (subdivisions + 1);
 
 		distBetweenPoints = (width > height ? height : width) / (subdivisions * 2);
 
 		if (isDoubleSided) {
-			x = new Vector3[vertexCount * 2];
-			normals = new Vector3[vertexCount * 2];
-			uv = new Vector2[vertexCount * 2];
+			x = new Vector3[numOneSidedVerts * 2];
+			normals = new Vector3[numOneSidedVerts * 2];
+			uv = new Vector2[numOneSidedVerts * 2];
 			triangles = new int[subdivisions * subdivisions * 6 * 2];
 		} else {
-			x = new Vector3[vertexCount];
-			normals = new Vector3[vertexCount];
-			uv = new Vector2[vertexCount];
+			x = new Vector3[numOneSidedVerts];
+			normals = new Vector3[numOneSidedVerts];
+			uv = new Vector2[numOneSidedVerts];
 			triangles = new int[subdivisions * subdivisions * 6];
 		}
 
-		v = new Vector3[vertexCount];
-		w = new float[vertexCount];
-		restPos = new Vector3[vertexCount];
-		dragFactor = new float[vertexCount];
+		v = new Vector3[numOneSidedVerts];
+		w = new float[numOneSidedVerts];
+		restPos = new Vector3[numOneSidedVerts];
+		dragFactor = new float[numOneSidedVerts];
 
-		numOneSidedVerts = vertexCount;
 		mass = width * height * (1f + compression) * thickness * density;
 		personalRb.mass = mass;
 		personalRb.useGravity = applyGravity;
@@ -376,8 +368,8 @@ public class ClothSimulation : MonoBehaviour
 				restPos[index] = x[index];
 
 				if (isDoubleSided) {
-					x[vertexCount + index] = new Vector3((j * width) / subdivisions, 0, height - (i * height) / subdivisions);
-					uv[vertexCount + index] = new Vector2(((float)j) / subdivisions, 1f - ((float)i) / subdivisions);
+					x[numOneSidedVerts + index] = new Vector3((j * width) / subdivisions, 0, height - (i * height) / subdivisions);
+					uv[numOneSidedVerts + index] = new Vector2(((float)j) / subdivisions, 1f - ((float)i) / subdivisions);
 				}
 
 				if ((i == 0 && j == 0) || (i == subdivisions && j == 0) || (i == subdivisions && j == subdivisions) || (i == 0 && j == subdivisions)) {
@@ -424,7 +416,7 @@ public class ClothSimulation : MonoBehaviour
 		//w[w.Length / 2 + subdivisions / 2] = 0;
 
 		// Create arrays to store triangle indices
-		vertexToTriangles = new List<int>[vertexCount];
+		vertexToTriangles = new List<int>[numOneSidedVerts];
 		for (int i = 0; i < vertexToTriangles.Length; i++)
 		{
 			vertexToTriangles[i] = new List<int>(4);
@@ -460,8 +452,6 @@ public class ClothSimulation : MonoBehaviour
 			}
 		}
 
-		
-
 		mesh = new Mesh();
 		mesh.vertices = x;
 		mesh.uv = uv;
@@ -470,7 +460,7 @@ public class ClothSimulation : MonoBehaviour
 		if (isDoubleSided) {
 			int[] meshTriangles = new int[triangles.Length];
 			for (int i = 0; i < meshTriangles.Length; i++) {
-				meshTriangles[i] = i >= triangles.Length / 2 ? triangles[i] + vertexCount : triangles[i];
+				meshTriangles[i] = i >= triangles.Length / 2 ? triangles[i] + numOneSidedVerts : triangles[i];
 			}
 
 			mesh.triangles = meshTriangles;
@@ -578,64 +568,44 @@ public class ClothSimulation : MonoBehaviour
 
 					if (j == 1) {
 						if (evenCol) {
-							triPairs[0].Add(id0);
-							triPairs[0].Add(id1);
 							triPairs[0].Add(id2);
 							triPairs[0].Add(id3);
 						} else {
-							triPairs[2].Add(id0);
-							triPairs[2].Add(id1);
 							triPairs[2].Add(id2);
 							triPairs[2].Add(id3);
 						}
 					} else {
 						if (topRow) {
 							if (evenCol) {
-								triPairs[1].Add(id0);
-								triPairs[1].Add(id1);
 								triPairs[1].Add(id2);
 								triPairs[1].Add(id3);
 							} else {
-								triPairs[3].Add(id0);
-								triPairs[3].Add(id1);
 								triPairs[3].Add(id2);
 								triPairs[3].Add(id3);
 							}
 						} else {
 							if (count == 0) {
 								if (evenCol) {
-									triPairs[4].Add(id0);
-									triPairs[4].Add(id1);
 									triPairs[4].Add(id2);
 									triPairs[4].Add(id3);
 								} else {
-									triPairs[5].Add(id0);
-									triPairs[5].Add(id1);
 									triPairs[5].Add(id2);
 									triPairs[5].Add(id3);
 								}
 							} else {
 								if (evenCol) {
 									if (evenRow) {
-										triPairs[3].Add(id0);
-										triPairs[3].Add(id1);
 										triPairs[3].Add(id2);
 										triPairs[3].Add(id3);
 									} else {
-										triPairs[1].Add(id0);
-										triPairs[1].Add(id1);
 										triPairs[1].Add(id2);
 										triPairs[1].Add(id3);
 									}
 								} else {
 									if (evenRow) {
-										triPairs[1].Add(id0);
-										triPairs[1].Add(id1);
 										triPairs[1].Add(id2);
 										triPairs[1].Add(id3);
 									} else {
-										triPairs[3].Add(id0);
-										triPairs[3].Add(id1);
 										triPairs[3].Add(id2);
 										triPairs[3].Add(id3);
 									}
@@ -649,8 +619,7 @@ public class ClothSimulation : MonoBehaviour
 				}
 			}
 		}
-		
-		
+
 		stretchingIDs = new int[edges.Length][]; // Initialize the outer array
 
 		for (int i = 0; i < edges.Length; i++) {
@@ -678,16 +647,18 @@ public class ClothSimulation : MonoBehaviour
 			for (int j = 0; j < d0[i].Length; j++) {
 				int id0 = stretchingIDs[i][2 * j];
 				int id1 = stretchingIDs[i][2 * j + 1];
+
 				d0[i][j] = (x[id0] - x[id1]).magnitude * (1 + compression);
 			}
 		}
 
 		dihedral0 = new float[bendingIDs.Length][];
 		for (int i = 0; i < dihedral0.Length; i++) {
-			dihedral0[i] = new float[bendingIDs[i].Length / 4];
+			dihedral0[i] = new float[bendingIDs[i].Length / 2];
 			for (int j = 0; j < dihedral0[i].Length; j++) {
-				int id0 = bendingIDs[i][4 * j + 2];
-				int id1 = bendingIDs[i][4 * j + 3];
+				int id0 = bendingIDs[i][2 * j];
+				int id1 = bendingIDs[i][2 * j + 1];
+
 				dihedral0[i][j] = (x[id0] - x[id1]).magnitude * (1 + compression);
 			}
 		}
@@ -695,7 +666,6 @@ public class ClothSimulation : MonoBehaviour
 		isInitialized = true;
 		dispatcher.refreshAllQueued = true;
 	}
-
 
 	private int[] FindTriNeighbors(int[] triangles) {
 
@@ -772,7 +742,7 @@ public class ClothSimulation : MonoBehaviour
 	private void OnValidate() {
 		if (!Application.isPlaying && isInitialized) {
 			meshRenderer = GetComponent<MeshRenderer>();
-			dispatcher = UnityEngine.Object.FindAnyObjectByType<ClothDispatcher>();
+			if (dispatcher == null) dispatcher = UnityEngine.Object.FindAnyObjectByType<ClothDispatcher>();
 
 			Material mat = new Material(meshRenderer.sharedMaterial);
 			mat.SetTexture("_BaseColorMap", dispatcher.textures[(int)clothTexture]);
