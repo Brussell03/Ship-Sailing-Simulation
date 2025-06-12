@@ -19,6 +19,8 @@ public class ClothSimulation : MonoBehaviour
 	public float wScale = 1f;
 	public bool handleCollisions = true;
 	[SerializeField] private bool _applyGravity = true;
+	public bool simulateGravity = true;
+	public bool simulateWind = true;
 	public bool applyGravity {
 		get { return _applyGravity; }
 		set {
@@ -34,15 +36,20 @@ public class ClothSimulation : MonoBehaviour
 			}
 		}
 	}
-	public bool simulateWind = true;
 	public bool applyWindToPinned = true;
 	public Rigidbody forceRigidbody;
 
-	public float width = 10f;
+	//public float width = 10f;
+	public float topWidth = 10f;
+	public float bottomWidth = 10f;
+	public float topCenter = 5f;
+	public float bottomCenter = 5f;
 	public float height = 10f;
-	public int subdivisions = 15;
+	[Min(2)] public int numRows = 15;
+	[Min(2)] public int numColumns = 15;
 	public ComputeShader clothCompute;
 	public float damping = 0.03f;
+	[Min(0.1f)] public Vector2 textureTiling = Vector2.one;
 	[Range (-0.5f, 0.5f)] public float compression = 0f;
 	public bool isDoubleSided = true;
 	[SerializeField] private bool _isSimulating = true;
@@ -80,9 +87,7 @@ public class ClothSimulation : MonoBehaviour
 
 	public Vector3[] x { get; set; }
 	public Vector3[] normals { get; set; }
-	private Vector3[] v;
 	public Vector2[] uv { get; set; }
-	private Vector3[] restPos;
 	public float[] w { get; set; }
 	public int[] triangles { get; set; }
 	public float[][] d0 { get; set; }
@@ -104,7 +109,6 @@ public class ClothSimulation : MonoBehaviour
 	[HideInInspector] public List<int> selectedVertices = new List<int>();
 	private MeshCollider meshCollider;
 	private Hash hash;
-	private Mesh mesh;
 	public ClothDispatcher dispatcher { get; private set; }
 	public bool showShapingGizmos { get; set; } = false;
 
@@ -119,7 +123,6 @@ public class ClothSimulation : MonoBehaviour
 	public bool isActive { get; private set; }
 	public Vector3 positionOnReadback { get; set; }
 	public Vector3 windForce { get; set; }
-	public float mass { get; private set; }
 	public Rigidbody personalRb { get; private set; }
 
 	public enum ClothTexture : int {
@@ -154,8 +157,12 @@ public class ClothSimulation : MonoBehaviour
 		meshRenderer = GetComponent<MeshRenderer>();
 		personalRb = GetComponent<Rigidbody>();
 		dispatcher = FindAnyObjectByType<ClothDispatcher>();
-		dispatcher.numClothsChanged = true;
-		dispatcher.refreshAllQueued = true;
+
+		if (dispatcher != null ) {
+			dispatcher.numClothsChanged = true;
+			dispatcher.refreshAllQueued = true;
+		}
+
 		//meshCollider = GetComponent<MeshCollider>();
 		isActive = true;
 
@@ -164,13 +171,12 @@ public class ClothSimulation : MonoBehaviour
 		Init();
 
 		if (Application.isPlaying) {
-			meshRenderer.enabled = !dispatcher.isRendering;
-			meshRenderer.material.SetTexture("_BaseColorMap", dispatcher.textures[(int)clothTexture]);
+			meshRenderer.enabled = false;
+			//meshRenderer.material.SetTexture("_BaseColorMap", dispatcher.textures[(int)clothTexture]);
 		}
 
 #if UNITY_EDITOR
-
-		if (drawGraphColoring && subdivisions <= 40) {
+		if (drawGraphColoring && numRows <= 40 && numColumns <= 40) {
 			for (int i = 0; i < d0.Length; i++) {
 				for (int j = 0; j < d0[i].Length; j++) {
 					int id0 = stretchingIDs[i][j * 2];
@@ -213,12 +219,6 @@ public class ClothSimulation : MonoBehaviour
 	}
 
 	private void FixedUpdate() {
-		//mesh.vertices = x;
-		//mesh.normals = normals;
-		//meshFilter.mesh = mesh;
-
-		//mesh.RecalculateNormals();
-		//mesh.RecalculateBounds();
 
 		/*for (int i = 0; i < normals.Length; i++) {
 			Debug.DrawRay(transform.TransformPoint(x[i]), transform.TransformDirection(normals[i]) / 10, i >= normals.Length / 2 ? Color.red : Color.blue);
@@ -258,7 +258,7 @@ public class ClothSimulation : MonoBehaviour
 	}
 
 	private void SolveCollisions(Vector3[] p) {
-		float thickness2 = thickness * thickness;
+		/*float thickness2 = thickness * thickness;
 
 		for (int i = 0; i < x.Length; i++) {
 			if (w[i] == 0.0)
@@ -321,7 +321,7 @@ public class ClothSimulation : MonoBehaviour
 				p[id0] += vec0 * friction;
 				p[id1] += vec1 * friction;
 			}
-		}
+		}*/
 	}
 
 	public void Init() {
@@ -330,63 +330,102 @@ public class ClothSimulation : MonoBehaviour
 		positionOnReadback = transform.position;
 
 		// Calculate the number of vertices
-		numOneSidedVerts = (subdivisions + 1) * (subdivisions + 1);
+		numOneSidedVerts = (numRows + 1) * (numColumns + 1);
 
-		distBetweenPoints = (width > height ? height : width) / (subdivisions * 2);
+
+		float maxWidth = Mathf.Max(topWidth, bottomWidth);
+
+		distBetweenPoints = (maxWidth > height ? height : maxWidth) / (numColumns + numRows);
 
 		if (isDoubleSided) {
 			x = new Vector3[numOneSidedVerts * 2];
 			normals = new Vector3[numOneSidedVerts * 2];
 			uv = new Vector2[numOneSidedVerts * 2];
-			triangles = new int[subdivisions * subdivisions * 6 * 2];
+			triangles = new int[numRows * numColumns * 6 * 2];
+			numOneSidedTriangles = triangles.Length / 6;
 		} else {
 			x = new Vector3[numOneSidedVerts];
 			normals = new Vector3[numOneSidedVerts];
 			uv = new Vector2[numOneSidedVerts];
-			triangles = new int[subdivisions * subdivisions * 6];
+			triangles = new int[numRows * numColumns * 6];
+			numOneSidedTriangles = triangles.Length / 3;
 		}
 
-		v = new Vector3[numOneSidedVerts];
 		w = new float[numOneSidedVerts];
-		restPos = new Vector3[numOneSidedVerts];
 		dragFactor = new float[numOneSidedVerts];
 
-		mass = width * height * (1f + compression) * thickness * density;
-		personalRb.mass = mass;
+		
+		personalRb.mass = (topWidth + bottomWidth) * height / 2f * (1f + compression) * thickness * density;
 		personalRb.useGravity = applyGravity;
 		
-		float cellArea = (width * height * (1 + compression) * (1f + compression)) / (subdivisions * subdivisions);
-		float invCellMass = wScale / (density * thickness * cellArea);
 		//float maxW = 0f; // For normalization
 
 		// Calculate vertex positions and UV coordinates
-		for (int i = 0; i < subdivisions + 1; i++) {
-			for (int j = 0; j < subdivisions + 1; j++) {
-				int index = j + i * (subdivisions + 1);
-				x[index] = new Vector3((j * width) / subdivisions, 0, height - (i * height) / subdivisions);
-				uv[index] = new Vector2(((float)j) / subdivisions, 1f - ((float)i) / subdivisions);
-				restPos[index] = x[index];
+		for (int i = 0; i < numRows + 1; i++) {
+			float rowWidth = (bottomWidth - topWidth) / numRows * i + topWidth;
+			float rowOffset = Mathf.Lerp(topCenter - topWidth / 2f, bottomCenter - bottomWidth / 2f, (float)i / numRows);
+
+			//float cellArea = (rowWidth * height * (1 + compression) * (1f + compression)) / (numRows * numColumns);
+			//float invCellMass = wScale / (density * thickness * cellArea);
+
+			for (int j = 0; j < numColumns + 1; j++) {
+				int index = j + i * (numColumns + 1);
+				x[index] = new Vector3((j * rowWidth) / numColumns + rowOffset, height - (i * height) / numRows, 0);
+				uv[index] = new Vector2(((j * rowWidth) / numColumns + rowOffset) / textureTiling.x, (height - (i * height) / numRows) / textureTiling.y);
 
 				if (isDoubleSided) {
-					x[numOneSidedVerts + index] = new Vector3((j * width) / subdivisions, 0, height - (i * height) / subdivisions);
-					uv[numOneSidedVerts + index] = new Vector2(((float)j) / subdivisions, 1f - ((float)i) / subdivisions);
+					x[numOneSidedVerts + index] = new Vector3((j * rowWidth) / numColumns + rowOffset, height - (i * height) / numRows, 0);
+					uv[numOneSidedVerts + index] = new Vector2(((j * rowWidth) / numColumns + rowOffset) / textureTiling.x, (height - (i * height) / numRows) / textureTiling.y);
 				}
+			}
+		}
 
-				if ((i == 0 && j == 0) || (i == subdivisions && j == 0) || (i == subdivisions && j == subdivisions) || (i == 0 && j == subdivisions)) {
-					// Corner Point
-					w[index] = 4f * invCellMass;
-					dragFactor[index] = 0.125f * cellArea * airDensity;
-				} else if (i == 0 || i == subdivisions || j == 0 || j == subdivisions) {
-					// Edge Point
-					w[index] = 2f * invCellMass;
-					dragFactor[index] = 0.25f * cellArea * airDensity;
+		for (int i = 0; i < numRows + 1; i++) {
+
+			for (int j = 0; j < numColumns + 1; j++) {
+				int index = j + i * (numColumns + 1);
+				float cellArea = 0;
+
+				if (i == 0 && j == 0) {
+					// Top Left
+					cellArea = GetPolygonArea(x[numColumns + 1], x[numColumns + 2], x[1], x[0]) / 4f;
+
+				} else if (i == numRows && j == 0) {
+					// Bottom Left
+					cellArea = GetPolygonArea(x[numRows * (numColumns + 1)], x[numRows * (numColumns + 1) + 1], x[(numRows - 1) * (numColumns + 1) + 1], x[(numRows - 1) * (numColumns + 1)]) / 4f;
+
+				} else if (i == numRows && j == numColumns) {
+					// Bottom Right
+					cellArea = GetPolygonArea(x[numOneSidedVerts - 2], x[numOneSidedVerts - 1], x[numRows * (numColumns + 1) - 1], x[numRows * (numColumns + 1) - 2]) / 4f;
+
+				} else if (i == 0 && j == numColumns) {
+					// Top Right
+					cellArea = GetPolygonArea(x[numColumns * 2], x[numColumns + 1 + numColumns], x[numColumns], x[numColumns - 1]) / 4f;
+
+				} else if (i == 0) {
+					// Top Edge
+					cellArea = GetPolygonArea(x[index + numColumns], x[index + numColumns + 2], x[index + 1], x[index - 1]) / 4f;
+
+				} else if (j == 0) {
+					// Left Edge
+					cellArea = GetPolygonArea(x[index + numColumns + 1], x[index + numColumns + 2], x[index - numColumns], x[index - numColumns - 1]) / 4f;
+
+				} else if (i == numRows) {
+					// Bottom Edge
+					cellArea = GetPolygonArea(x[index - 1], x[index + 1], x[index - numColumns], x[index - numColumns - 2]) / 4f;
+
+				} else if (j == numColumns) {
+					// Right Edge
+					cellArea = GetPolygonArea(x[index + numColumns], x[index + numColumns + 1], x[index - numColumns - 1], x[index - numColumns - 2]) / 4f;
+
 				} else {
 					// Inner Point
-					w[index] = invCellMass;
-					dragFactor[index] = 0.5f * cellArea * airDensity;
+					cellArea = GetPolygonArea(x[index + numColumns], x[index + numColumns + 2], x[index - numColumns], x[index - numColumns - 2]) / 4f;
+
 				}
-				//w[j + i * (subdivisions + 1)] = 1;
-				//maxW = Mathf.Max(maxW, w[j + i * (subdivisions + 1)]); // For normalization
+
+				w[index] = wScale / (density * thickness * cellArea);
+				dragFactor[index] = 0.5f * cellArea * airDensity;
 			}
 		}
 
@@ -400,20 +439,6 @@ public class ClothSimulation : MonoBehaviour
 		if (Application.isPlaying) {
 			transform.TransformPoints(x, x);
 		}
-		// Normalization (Optional)
-		/*for (int i = 0; i < subdivisions + 1; i++) {
-			for (int j = 0; j < subdivisions + 1; j++) {
-				w[j + i * (subdivisions + 1)] /= maxW; // Normalize to 0-1 range
-			}
-		}*/
-
-		//w[0] = 0;
-
-		//w[subdivisions] = 0;
-		//w[w.Length - 1] = 0;
-		//w[w.Length - 1 - subdivisions] = 0;
-
-		//w[w.Length / 2 + subdivisions / 2] = 0;
 
 		// Create arrays to store triangle indices
 		vertexToTriangles = new List<int>[numOneSidedVerts];
@@ -424,55 +449,57 @@ public class ClothSimulation : MonoBehaviour
 		int triangleIndex = 0;
 
 		// Generate triangle indices
-		for (int i = 0; i < subdivisions; i++) {
-			for (int j = 0; j < subdivisions; j++) {
-				vertexToTriangles[i * (subdivisions + 1) + j].Add(triangleIndex / 3);
-				vertexToTriangles[i * (subdivisions + 1) + 1 + j].Add(triangleIndex / 3);
-				vertexToTriangles[(i + 1) * (subdivisions + 1) + j].Add(triangleIndex / 3);
-				triangles[triangleIndex++] = i * (subdivisions + 1) + j;
-				triangles[triangleIndex++] = i * (subdivisions + 1) + 1 + j;
-				triangles[triangleIndex++] = (i + 1) * (subdivisions + 1) + j;
+		for (int i = 0; i < numRows; i++) {
+			for (int j = 0; j < numColumns; j++) {
+				vertexToTriangles[i * (numColumns + 1) + j].Add(triangleIndex / 3);
+				vertexToTriangles[i * (numColumns + 1) + 1 + j].Add(triangleIndex / 3);
+				vertexToTriangles[(i + 1) * (numColumns + 1) + j].Add(triangleIndex / 3);
+				triangles[triangleIndex++] = i * (numColumns + 1) + j;
+				triangles[triangleIndex++] = i * (numColumns + 1) + 1 + j;
+				triangles[triangleIndex++] = (i + 1) * (numColumns + 1) + j;
 
-				vertexToTriangles[i * (subdivisions + 1) + 1 + j].Add(triangleIndex / 3);
-				vertexToTriangles[(i + 1) * (subdivisions + 1) + j + 1].Add(triangleIndex / 3);
-				vertexToTriangles[(i + 1) * (subdivisions + 1) + j].Add(triangleIndex / 3);
-				triangles[triangleIndex++] = i * (subdivisions + 1) + 1 + j;
-				triangles[triangleIndex++] = (i + 1) * (subdivisions + 1) + j + 1;
-				triangles[triangleIndex++] = (i + 1) * (subdivisions + 1) + j;
+				vertexToTriangles[i * (numColumns + 1) + 1 + j].Add(triangleIndex / 3);
+				vertexToTriangles[(i + 1) * (numColumns + 1) + j + 1].Add(triangleIndex / 3);
+				vertexToTriangles[(i + 1) * (numColumns + 1) + j].Add(triangleIndex / 3);
+				triangles[triangleIndex++] = i * (numColumns + 1) + 1 + j;
+				triangles[triangleIndex++] = (i + 1) * (numColumns + 1) + j + 1;
+				triangles[triangleIndex++] = (i + 1) * (numColumns + 1) + j;
 
 				if (isDoubleSided) {
-					triangles[triangles.Length / 2 + triangleIndex - 6] = i * (subdivisions + 1) + j;
-					triangles[triangles.Length / 2 + triangleIndex - 5] = (i + 1) * (subdivisions + 1) + j;
-					triangles[triangles.Length / 2 + triangleIndex - 4] = i * (subdivisions + 1) + 1 + j;
+					triangles[triangles.Length / 2 + triangleIndex - 6] = i * (numColumns + 1) + j;
+					triangles[triangles.Length / 2 + triangleIndex - 5] = (i + 1) * (numColumns + 1) + j;
+					triangles[triangles.Length / 2 + triangleIndex - 4] = i * (numColumns + 1) + 1 + j;
 
-					triangles[triangles.Length / 2 + triangleIndex - 3] = i * (subdivisions + 1) + 1 + j;
-					triangles[triangles.Length / 2 + triangleIndex - 2] = (i + 1) * (subdivisions + 1) + j;
-					triangles[triangles.Length / 2 + triangleIndex - 1] = (i + 1) * (subdivisions + 1) + j + 1;
+					triangles[triangles.Length / 2 + triangleIndex - 3] = i * (numColumns + 1) + 1 + j;
+					triangles[triangles.Length / 2 + triangleIndex - 2] = (i + 1) * (numColumns + 1) + j;
+					triangles[triangles.Length / 2 + triangleIndex - 1] = (i + 1) * (numColumns + 1) + j + 1;
 				}
 			}
 		}
 
-		mesh = new Mesh();
-		mesh.vertices = x;
-		mesh.uv = uv;
+#if UNITY_EDITOR
+		if (!Application.isPlaying) {
+			Mesh mesh = new Mesh();
+			mesh.vertices = x;
+			mesh.uv = uv;
 
-		numOneSidedTriangles = triangles.Length / 3;
-		if (isDoubleSided) {
-			int[] meshTriangles = new int[triangles.Length];
-			for (int i = 0; i < meshTriangles.Length; i++) {
-				meshTriangles[i] = i >= triangles.Length / 2 ? triangles[i] + numOneSidedVerts : triangles[i];
+			if (isDoubleSided) {
+				int[] meshTriangles = new int[triangles.Length];
+				for (int i = 0; i < meshTriangles.Length; i++) {
+					meshTriangles[i] = i >= triangles.Length / 2 ? triangles[i] + numOneSidedVerts : triangles[i];
+				}
+
+				mesh.triangles = meshTriangles;
+			} else {
+				mesh.triangles = triangles;
 			}
 
-			mesh.triangles = meshTriangles;
-			numOneSidedTriangles /= 2;
-		} else {
-			mesh.triangles = triangles;
+			mesh.RecalculateBounds();
+			mesh.RecalculateNormals();
+			normals = mesh.normals;
+			meshFilter.sharedMesh = mesh;
 		}
-
-		mesh.RecalculateBounds();
-		mesh.RecalculateNormals();
-		normals = mesh.normals;
-		meshFilter.sharedMesh = mesh;
+#endif
 
 
 		// Generate default distances
@@ -490,9 +517,9 @@ public class ClothSimulation : MonoBehaviour
 		for (int i = 0; i < numOneSidedTriangles; i++) {
 			bool evenTri = i % 2 == 1; // Is the triangle a top-left triangle instead of bottom-right
 			bool evenCol = (i / 2) % 2 == 1; // Is the column the triangle is in an even one
-			bool evenRow = (i / (subdivisions * 2)) % 2 == 1; // Is the row the triangle is in an even one
-			bool topRow = i < subdivisions * 2;
-			bool bottomRow = i > (numOneSidedTriangles - subdivisions * 2);
+			bool evenRow = (i / (numColumns * 2)) % 2 == 1; // Is the row the triangle is in an even one
+			bool topRow = i < numColumns * 2;
+			bool bottomRow = i > (numOneSidedTriangles - numColumns * 2);
 
 			for (int j = 0; j < 3; j++) {
 				int id0 = triangles[i * 3 + j];
@@ -513,7 +540,7 @@ public class ClothSimulation : MonoBehaviour
 								edges[1].Add(id0);
 								edges[1].Add(id1);
 							}
-						} else if (i % (subdivisions * 2) == 0 && j == 2) { // First Column & Left Vertical Edge
+						} else if (i % (numColumns * 2) == 0 && j == 2) { // First Column & Left Vertical Edge
 							if (evenRow) {
 								edges[2].Add(id0);
 								edges[2].Add(id1);
@@ -557,7 +584,7 @@ public class ClothSimulation : MonoBehaviour
 				}
 
 
-				if (i % (subdivisions * 2) == subdivisions * 2 - 1) count = 0; // Rightmost column
+				if (i % (numColumns * 2) == numColumns * 2 - 1) count = 0; // Rightmost column
 
 				// tri pair
 				if (n >= 0 && id0 < id1) { // Creating bending constraints
@@ -716,6 +743,10 @@ public class ClothSimulation : MonoBehaviour
 		if (dispatcher != null) {
 			dispatcher.refreshAllQueued = true;
 		}
+
+#if UNITY_EDITOR
+		if (!Application.isPlaying && meshFilter.sharedMesh != null) meshFilter.sharedMesh.Clear();
+#endif
 	}
 
 	private void OnDisable() {
@@ -728,6 +759,10 @@ public class ClothSimulation : MonoBehaviour
 		if (dispatcher != null) {
 			dispatcher.refreshAllQueued = true;
 		}
+
+#if UNITY_EDITOR
+		//if (!Application.isPlaying && meshFilter.sharedMesh != null) meshFilter.sharedMesh.Clear();
+#endif
 	}
 
 	private void OnEnable() {
@@ -736,6 +771,16 @@ public class ClothSimulation : MonoBehaviour
 		}
 
 		isActive = true;
+	}
+
+	private float GetPolygonArea(params Vector2[] vertices) {
+
+		float area = 0;
+		for (int i = 0; i < vertices.Length; i++) {
+			area += vertices[i].x * vertices[(i + 1) % vertices.Length].y - vertices[(i + 1) % vertices.Length].x * vertices[i].y;
+		}
+
+		return Mathf.Abs(area / 2f);
 	}
 
 #if UNITY_EDITOR
@@ -768,17 +813,16 @@ public class ClothSimulation : MonoBehaviour
 		if (meshFilter == null) meshFilter = GetComponent<MeshFilter>();
 		if (meshRenderer == null) meshRenderer = GetComponent<MeshRenderer>();
 
-		//meshFilter.sharedMesh.Clear();
 		meshRenderer.enabled = false;
 		isShowingCloth = false;
 	}
 
 	public void PinCorners() {
-		for (int i = 0; i < subdivisions + 1; i++) {
-			for (int j = 0; j < subdivisions + 1; j++) {
-				if ((j < cornerPinDimX || j > subdivisions - cornerPinDimX) && (i < cornerPinDimY || i > subdivisions - cornerPinDimY)) {
-					if (!pinnedVertices.Contains(i * (subdivisions + 1) + j)) {
-						pinnedVertices.Add(i * (subdivisions + 1) + j);
+		for (int i = 0; i < numRows + 1; i++) {
+			for (int j = 0; j < numColumns + 1; j++) {
+				if ((j < cornerPinDimX || j > numColumns - cornerPinDimX) && (i < cornerPinDimY || i > numRows - cornerPinDimY)) {
+					if (!pinnedVertices.Contains(i * (numColumns + 1) + j)) {
+						pinnedVertices.Add(i * (numColumns + 1) + j);
 					}
 				}
 			}

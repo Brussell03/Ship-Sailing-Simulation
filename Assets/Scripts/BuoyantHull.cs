@@ -1470,8 +1470,8 @@ public class BuoyantHull : MonoBehaviour
 	private float GetPolygonArea(Vector2[] vertices) {
 		float area = 0;
 
-		for (int i = 0; i < vertices.Length - 1; i++) {
-			area += vertices[i].x * vertices[i + 1].y - vertices[i + 1].x * vertices[i].y;
+		for (int i = 0; i < vertices.Length; i++) {
+			area += vertices[i].x * vertices[(i + 1) % vertices.Length].y - vertices[(i + 1) % vertices.Length].x * vertices[i].y;
 		}
 
 		return Mathf.Abs(area / 2f);
@@ -1482,9 +1482,10 @@ public class BuoyantHull : MonoBehaviour
 		float totalArea = 0f;
 		float yOffset = hullSection.topY * hullHeight - hullSection.hullShape.hullPoints[hullSection.hullShape.hullPoints.Count - 1].y * hullSection.normalizedSectionHeight * hullHeight;
 
-		for (int i = 0; i < hullSection.hullShape.hullPoints.Count - 1; i++) {
+		int numPoints = hullSection.hullShape.hullPoints.Count;
+		for (int i = 0; i < numPoints; i++) {
 			// Area of left and right side of section
-			float doubleSectionArea = ((hullSection.hullShape.hullPoints[i].x * hullSection.normalizedSectionWidth * hullWidth) + (hullSection.hullShape.hullPoints[i + 1].x * hullSection.normalizedSectionWidth * hullWidth)) * ((hullSection.hullShape.hullPoints[i + 1].y * hullSection.normalizedSectionHeight * hullHeight + yOffset) - (hullSection.hullShape.hullPoints[i].y * hullSection.normalizedSectionHeight * hullHeight + yOffset));
+			float doubleSectionArea = ((hullSection.hullShape.hullPoints[i].x * hullSection.normalizedSectionWidth * hullWidth) + (hullSection.hullShape.hullPoints[(i + 1) % numPoints].x * hullSection.normalizedSectionWidth * hullWidth)) * ((hullSection.hullShape.hullPoints[(i + 1) % numPoints].y * hullSection.normalizedSectionHeight * hullHeight + yOffset) - (hullSection.hullShape.hullPoints[i].y * hullSection.normalizedSectionHeight * hullHeight + yOffset));
 			totalArea += doubleSectionArea;
 		}
 

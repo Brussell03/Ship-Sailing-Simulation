@@ -82,7 +82,7 @@ int GetClothIndex(uint3 id)
     return clothIndex;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void UpdateVelocity (uint3 id : SV_DispatchThreadID)
 {
     if (id.x >= numVertices)
@@ -103,7 +103,7 @@ void UpdateVelocity (uint3 id : SV_DispatchThreadID)
     x[id.x] = p[id.x];
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void PredictPosition (uint3 id : SV_DispatchThreadID)
 {
     if (id.x >= numVertices)
@@ -165,7 +165,7 @@ void PredictPosition (uint3 id : SV_DispatchThreadID)
 
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void SolveStretchingBatch1(uint3 id : SV_DispatchThreadID)
 {
     
@@ -206,7 +206,7 @@ void SolveStretchingBatch1(uint3 id : SV_DispatchThreadID)
     p[id1] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void SolveStretchingBatch2(uint3 id : SV_DispatchThreadID)
 {
     
@@ -247,7 +247,7 @@ void SolveStretchingBatch2(uint3 id : SV_DispatchThreadID)
     p[id1] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void SolveStretchingBatch3(uint3 id : SV_DispatchThreadID)
 {
     
@@ -288,7 +288,7 @@ void SolveStretchingBatch3(uint3 id : SV_DispatchThreadID)
     p[id1] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void SolveStretchingBatch4(uint3 id : SV_DispatchThreadID)
 {
     
@@ -329,7 +329,7 @@ void SolveStretchingBatch4(uint3 id : SV_DispatchThreadID)
     p[id1] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void SolveStretchingBatch5(uint3 id : SV_DispatchThreadID)
 {
     
@@ -370,7 +370,7 @@ void SolveStretchingBatch5(uint3 id : SV_DispatchThreadID)
     p[id1] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void SolveStretchingBatch6(uint3 id : SV_DispatchThreadID)
 {
     
@@ -411,7 +411,7 @@ void SolveStretchingBatch6(uint3 id : SV_DispatchThreadID)
     p[id1] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void SolveBendingBatch1(uint3 id : SV_DispatchThreadID)
 {
     
@@ -453,7 +453,7 @@ void SolveBendingBatch1(uint3 id : SV_DispatchThreadID)
     p[id3] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void SolveBendingBatch2(uint3 id : SV_DispatchThreadID)
 {
     
@@ -495,7 +495,7 @@ void SolveBendingBatch2(uint3 id : SV_DispatchThreadID)
     p[id3] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void SolveBendingBatch3(uint3 id : SV_DispatchThreadID)
 {
     
@@ -537,7 +537,7 @@ void SolveBendingBatch3(uint3 id : SV_DispatchThreadID)
     p[id3] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void SolveBendingBatch4(uint3 id : SV_DispatchThreadID)
 {
     
@@ -579,7 +579,7 @@ void SolveBendingBatch4(uint3 id : SV_DispatchThreadID)
     p[id3] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void SolveBendingBatch5(uint3 id : SV_DispatchThreadID)
 {
     
@@ -621,7 +621,7 @@ void SolveBendingBatch5(uint3 id : SV_DispatchThreadID)
     p[id3] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void SolveBendingBatch6(uint3 id : SV_DispatchThreadID)
 {
     
@@ -663,7 +663,7 @@ void SolveBendingBatch6(uint3 id : SV_DispatchThreadID)
     p[id3] = p1;
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void CalculateTriangleNormals(uint3 id : SV_DispatchThreadID)
 {
     if (id.x >= numTriangles)
@@ -678,7 +678,7 @@ void CalculateTriangleNormals(uint3 id : SV_DispatchThreadID)
     triangleNormals[id.x] = normalize(cross(e2, e1));
 }
 
-[numthreads(128, 1, 1)]
+[numthreads(256, 1, 1)]
 void CalculateVertexNormals(uint3 id : SV_DispatchThreadID)
 {
     if (id.x >= numVertices)

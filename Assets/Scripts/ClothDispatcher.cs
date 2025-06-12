@@ -273,10 +273,13 @@ public class ClothDispatcher : MonoBehaviour
 			}
 
 			windVectorBuffer.SetData(windVectorsNative);
-			pinnedVertBuffer.SetData(pinnedVertNative);
+
+			if (numPinnedVertices > 0) {
+				pinnedVertBuffer.SetData(pinnedVertNative);
+				clothCompute.SetBuffer(predictPositionKernel, "pinnedVertPos", pinnedVertBuffer);
+			}
 
 			clothCompute.SetBuffer(predictPositionKernel, "windVector", windVectorBuffer);
-			clothCompute.SetBuffer(predictPositionKernel, "pinnedVertPos", pinnedVertBuffer);
 
 			/*if (handleCollisions) {
 				hash.Create(x);
@@ -809,7 +812,7 @@ public class ClothDispatcher : MonoBehaviour
 				applyWindNative[i] = cloths[clothIndex].simulateWind;
 
 				// Acceleration Due to Gravity, Acceleration
-				localGravityVectorsNative[i] = (gravityActive && cloths[clothIndex].applyGravity) ? Physics.gravity : Vector3.zero;
+				localGravityVectorsNative[i] = (gravityActive && cloths[clothIndex].simulateGravity) ? Physics.gravity : Vector3.zero;
 
 				// Map pinned vertices locations
 				for (int j = 0; j < cloths[sortedClothIndicesNative[i]].pinnedVertices.Count; j++) {
@@ -1030,7 +1033,7 @@ public class ClothDispatcher : MonoBehaviour
 		clothWindForceBuffer = ComputeHelper.CreateStructuredBuffer<int3>(numSimulatedCloths);
 		clothCompute.SetBuffer(predictPositionKernel, "clothWindForce", clothWindForceBuffer);
 
-		pinnedVertBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numPinnedVertices);
+		if (numPinnedVertices > 0) pinnedVertBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numPinnedVertices);
 
 		d0Buffers = new ComputeBuffer[stretchBatches];
 		stretchingIDsBuffers = new ComputeBuffer[stretchBatches];

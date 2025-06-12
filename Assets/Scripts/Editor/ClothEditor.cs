@@ -92,9 +92,9 @@ public class ClothEditor : Editor {
 			EditorGUILayout.BeginHorizontal();
 			{
 				EditorGUILayout.LabelField("Dim X:", GUILayout.Width(40));
-				cloth.cornerPinDimX = Mathf.Clamp(EditorGUILayout.IntField(cloth.cornerPinDimX, GUILayout.Width(40)), 1, cloth.subdivisions / 2 + 1);
+				cloth.cornerPinDimX = Mathf.Clamp(EditorGUILayout.IntField(cloth.cornerPinDimX, GUILayout.Width(40)), 1, cloth.numColumns / 2 + 1);
 				EditorGUILayout.LabelField("Dim Y:", GUILayout.Width(40));
-				cloth.cornerPinDimY = Mathf.Clamp(EditorGUILayout.IntField(cloth.cornerPinDimY, GUILayout.Width(40)), 1, cloth.subdivisions / 2 + 1);
+				cloth.cornerPinDimY = Mathf.Clamp(EditorGUILayout.IntField(cloth.cornerPinDimY, GUILayout.Width(40)), 1, cloth.numRows / 2 + 1);
 				if (GUILayout.Button("Pin Corners", GUILayout.MinWidth(100))) {
 					cloth.PinCorners();
 					EditorUtility.SetDirty(cloth);
