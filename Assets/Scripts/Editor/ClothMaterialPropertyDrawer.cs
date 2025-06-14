@@ -4,8 +4,8 @@ using UnityEngine;
 using UnityEditor;
 using System.Linq;
 
-[CustomPropertyDrawer(typeof(ClothSimulation.ClothTexture))]
-public class ClothTexturePropertyDrawer : PropertyDrawer
+[CustomPropertyDrawer(typeof(ClothSimulation.ClothMaterial))]
+public class ClothMaterialPropertyDrawer : PropertyDrawer
 {
 	public override void OnGUI(Rect position, SerializedProperty property, GUIContent label) {
 		//base.OnGUI(position, property, label);
@@ -14,18 +14,18 @@ public class ClothTexturePropertyDrawer : PropertyDrawer
 
 		ClothDispatcher dispatcher = clothSimulation.dispatcher;
 
-		List<Texture2D> textures = null;
-		if (dispatcher != null) textures = dispatcher.textures;
+		List<ClothMaterial> materials = null;
+		if (dispatcher != null) materials = dispatcher.materials;
 
-		if (textures != null && textures.Count > 0) {
+		if (materials != null && materials.Count > 0) {
 			// Get current selected enum index
 			int currentSelectedIndex = property.intValue;
 
 			// Create display names for the dropdown
-			string[] textureNames = textures.Select(tex => tex != null ? tex.name : "None").ToArray();
+			string[] materialNames = materials.Select(mat => mat.name).ToArray();
 
 			// Draw the dropdown
-			int newSelectedIndex = EditorGUI.Popup(position, label.text, currentSelectedIndex, textureNames);
+			int newSelectedIndex = EditorGUI.Popup(position, label.text, currentSelectedIndex, materialNames);
 
 			// If the selected index changed, update the SerializedProperty
 			if (newSelectedIndex != currentSelectedIndex) {
@@ -35,7 +35,7 @@ public class ClothTexturePropertyDrawer : PropertyDrawer
 			// If textures list is not available, fall back to default enum drawing
 			EditorGUI.PropertyField(position, property, label);
 			if (dispatcher == null) {
-				EditorGUI.HelpBox(position, "ClothDispatcher not found or textures list is empty. Enum may not reflect textures.", MessageType.Warning);
+				EditorGUI.HelpBox(position, "ClothDispatcher not found or materials list is empty. Enum may not reflect materials.", MessageType.Warning);
 			}
 		}
 	}

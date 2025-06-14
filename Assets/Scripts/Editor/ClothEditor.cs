@@ -8,14 +8,26 @@ public class ClothEditor : Editor {
 
 
 	private int clickedVertexIndex = -1;
+	private int pinWidth = 1;
 	private bool confirmingClear;
+
+	private SerializedProperty numRowsProp;
+	private SerializedProperty numColumnsProp;
+
+	private void OnEnable() {
+		numRowsProp = serializedObject.FindProperty("numRows");
+		numColumnsProp = serializedObject.FindProperty("numColumns");
+	}
 
 	public override void OnInspectorGUI() {
 		base.OnInspectorGUI();
+		serializedObject.Update();
 
 		ClothSimulation cloth = (ClothSimulation)target;
 		Color defaultGuiColor = GUI.backgroundColor;
-		//EditorGUILayout.IntField("Health", health);
+
+		//EditorGUILayout.PropertyField(numRowsProp);
+		//EditorGUILayout.PropertyField(numColumnsProp);
 
 		EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 		{
@@ -24,8 +36,8 @@ public class ClothEditor : Editor {
 
 			EditorGUILayout.BeginHorizontal();
 			{
-				if (GUILayout.Button(cloth.isShowingCloth ? "Hide Cloth" : "Show Cloth")) {
-					if (cloth.isShowingCloth) {
+				if (GUILayout.Button(cloth.isInitialized ? "Hide Cloth" : "Show Cloth")) {
+					if (cloth.isInitialized) {
 						cloth.HideCloth();
 					} else {
 						cloth.ShowCloth();
@@ -36,6 +48,7 @@ public class ClothEditor : Editor {
 				if (GUILayout.Button("Reset Cloth")) {
 					cloth.isInitialized = false;
 					cloth._pinnedVertices.Clear();
+
 					cloth.Init();
 				}
 			}
@@ -89,7 +102,9 @@ public class ClothEditor : Editor {
 			EditorGUILayout.LabelField("Quick Pinning Options", EditorStyles.miniBoldLabel);
 			EditorGUILayout.Space();
 
-			EditorGUILayout.BeginHorizontal();
+			EditorGUILayout.LabelField("Corner Pinning", EditorStyles.label);
+
+			EditorGUILayout.BeginHorizontal(GUI.skin.window);
 			{
 				EditorGUILayout.LabelField("Dim X:", GUILayout.Width(40));
 				cloth.cornerPinDimX = Mathf.Clamp(EditorGUILayout.IntField(cloth.cornerPinDimX, GUILayout.Width(40)), 1, cloth.numColumns / 2 + 1);
@@ -102,6 +117,52 @@ public class ClothEditor : Editor {
 			}
 			EditorGUILayout.EndHorizontal();
 
+			EditorGUILayout.Space();
+			EditorGUILayout.LabelField("Edge Pinning", EditorStyles.label);
+
+			EditorGUILayout.BeginHorizontal(GUI.skin.window);
+			{
+				EditorGUILayout.BeginVertical();
+				{
+					EditorGUILayout.BeginHorizontal();
+					{
+						EditorGUILayout.LabelField("Edge Pin Width:", GUILayout.Width(100));
+						pinWidth = Mathf.Clamp(EditorGUILayout.IntField(pinWidth, GUILayout.Width(40)), 1, cloth.numRows + 1);
+					}
+					EditorGUILayout.EndHorizontal();
+
+					if (GUILayout.Button("Pin Left Edge", GUILayout.MinWidth(100))) {
+						cloth.PinLeftEdge(pinWidth);
+						EditorUtility.SetDirty(cloth);
+					}
+
+					if (GUILayout.Button("Pin Top Edge", GUILayout.MinWidth(100))) {
+						cloth.PinTopEdge(pinWidth);
+						EditorUtility.SetDirty(cloth);
+					}
+				}
+				EditorGUILayout.EndVertical();
+
+				EditorGUILayout.BeginVertical();
+				{
+					if (GUILayout.Button("Pin All Edges", GUILayout.MinWidth(100))) {
+						cloth.PinAllEdges(pinWidth);
+						EditorUtility.SetDirty(cloth);
+					}
+
+					if (GUILayout.Button("Pin Right Edge", GUILayout.MinWidth(100))) {
+						cloth.PinRightEdge(pinWidth);
+						EditorUtility.SetDirty(cloth);
+					}
+
+					if (GUILayout.Button("Pin Bottom Edge", GUILayout.MinWidth(100))) {
+						cloth.PinBottomEdge(pinWidth);
+						EditorUtility.SetDirty(cloth);
+					}
+				}
+				EditorGUILayout.EndVertical();
+			}
+			EditorGUILayout.EndHorizontal();
 
 			if (cloth._pinnedVertices != null && cloth._pinnedVertices.Count > 0) {
 				EditorGUILayout.Space();
@@ -110,7 +171,7 @@ public class ClothEditor : Editor {
 					if (confirmingClear) {
 						GUI.backgroundColor = Color.red;
 					}
-					EditorGUILayout.LabelField($"Pinned Vertices: {cloth._pinnedVertices.Count}");
+					EditorGUILayout.LabelField($"Pinned Vertices: {cloth._pinnedVertices.Count}", EditorStyles.miniBoldLabel);
 					if (GUILayout.Button(confirmingClear ? "Confirm?" : "Clear Pinned")) {
 						if (confirmingClear) {
 							cloth._pinnedVertices.Clear();
@@ -126,6 +187,8 @@ public class ClothEditor : Editor {
 			}
 		}
 		EditorGUILayout.EndVertical();
+
+		serializedObject.ApplyModifiedProperties();
 	}
 
 	public void OnSceneGUI() {
@@ -143,8 +206,8 @@ public class ClothEditor : Editor {
 		for (int i = 0; i < cloth.x.Length / 2; i++) {
 			Vector3 worldX = cloth.transform.TransformPoint(cloth.x[i]);
 			float handleSize = HandleUtility.GetHandleSize(worldX) * 0.4f;
-			if (handleSize > cloth.distBetweenPoints / 1.5f) {
-				handleSize = cloth.distBetweenPoints / 1.5f;
+			if (handleSize > cloth.distBetweenHandles / 1.5f) {
+				handleSize = cloth.distBetweenHandles / 1.5f;
 			}
 
 			Handles.color = cloth.selectedVertices.Contains(i) ? Color.red : Color.yellow;
@@ -183,7 +246,7 @@ public class ClothEditor : Editor {
 			foreach (int index in cloth.selectedVertices) {
 				if (index >= 0 && index < cloth.x.Length) {
 					Vector3 worldVertex = cloth.transform.TransformPoint(cloth.x[index]);
-					Handles.DrawWireCube(worldVertex, Vector3.one * cloth.distBetweenPoints * 1.5f);
+					Handles.DrawWireCube(worldVertex, Vector3.one * cloth.distBetweenHandles * 1.5f);
 				}
 			}
 		}

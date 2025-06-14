@@ -29,7 +29,7 @@ public class ClothDispatcher : MonoBehaviour
 	public bool gravityActive = true;
 	public bool windActive = true;
 	public Material clothMaterial;
-	public List<Texture2D> textures = new List<Texture2D>();
+	public List<ClothMaterial> materials = new List<ClothMaterial>();
 	private Vector3[] clothsLastPosition;
 	private ClothSimulation[] cloths;
 
@@ -85,6 +85,7 @@ public class ClothDispatcher : MonoBehaviour
 	ComputeBuffer pinnedVertBuffer;
 	ComputeBuffer vertToPinnedBuffer;
 	ComputeBuffer clothWindForceBuffer;
+	ComputeBuffer[] textureDoubleSidedBuffers;
 	#endregion
 
 	#region Native Arrays
@@ -122,6 +123,7 @@ public class ClothDispatcher : MonoBehaviour
 	NativeArray<Vector3> pinnedVertNative; // Pinned Vertices
 	NativeArray<int> vertToPinnedNative;
 	NativeArray<Vector3> clothPositionDeltaNative;
+	NativeArray<uint> textureDoubleSidedNative;
 	#endregion
 
 	List<List<float>> d0 = new List<List<float>>();
@@ -343,16 +345,16 @@ public class ClothDispatcher : MonoBehaviour
 
 									if (cloths[sortedClothIndicesNative[i]].isDoubleSided) {
 										// Copy Vertices
-										size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
-										sourcePtr = (IntPtr)((Vector3*)xNative.GetUnsafePtr() + activeVertexStartIndexNative[i]); // Calculate offset for the subset
-										destPtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[sortedClothIndicesNative[i]].x, cloths[sortedClothIndicesNative[i]].numOneSidedVerts);
-										UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
+										//size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
+										//sourcePtr = (IntPtr)((Vector3*)xNative.GetUnsafePtr() + activeVertexStartIndexNative[i]); // Calculate offset for the subset
+										//destPtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[sortedClothIndicesNative[i]].x, cloths[sortedClothIndicesNative[i]].numOneSidedVerts);
+										//UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
 
 										// Copy Backside Normals
-										size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
-										sourcePtr = (IntPtr)((Vector3*)normalsInverseNative.GetUnsafePtr() + activeVertexStartIndexNative[i]); // Calculate offset for the subset
-										destPtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[sortedClothIndicesNative[i]].normals, cloths[sortedClothIndicesNative[i]].numOneSidedVerts);
-										UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
+										//size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
+										//sourcePtr = (IntPtr)((Vector3*)normalsInverseNative.GetUnsafePtr() + activeVertexStartIndexNative[i]); // Calculate offset for the subset
+										//destPtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[sortedClothIndicesNative[i]].normals, cloths[sortedClothIndicesNative[i]].numOneSidedVerts);
+										//UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
 									}
 								}
 
@@ -504,6 +506,7 @@ public class ClothDispatcher : MonoBehaviour
 
 		buffersGenerated = true;
 		refreshAllQueued = false;
+		refreshRenderingQueued = false;
 		pendingMeshReadback = false;
 	}
 
@@ -1188,14 +1191,14 @@ public class ClothDispatcher : MonoBehaviour
 			if (cloths[clothIndex].isRendering && !textureSortedClothsNative.Contains(clothIndex)) {
 				textureGroupFirstIndex.Add(numAddedCloths);
 
-				int currentTexture = (int)cloths[clothIndex].clothTexture;
+				int currentTexture = (int)cloths[clothIndex].clothMaterial;
 				renderedToSortedNative[numAddedCloths] = i;
 				textureSortedClothsNative[numAddedCloths++] = clothIndex;
 				numSidesPerGroup.Add(cloths[clothIndex].isDoubleSided ? 2 : 1);
 
 				for (int j = i + 1; j < numActiveCloths; j++) {
 
-					if ((int)cloths[sortedClothIndicesNative[j]].clothTexture == currentTexture) {
+					if ((int)cloths[sortedClothIndicesNative[j]].clothMaterial == currentTexture) {
 
 						renderedToSortedNative[numAddedCloths] = j;
 						textureSortedClothsNative[numAddedCloths++] = sortedClothIndicesNative[j];
@@ -1214,11 +1217,13 @@ public class ClothDispatcher : MonoBehaviour
 		matProps = new MaterialPropertyBlock[numTextureGroups];
 		renderedTriangleLocalStartIndexBuffers = new ComputeBuffer[numTextureGroups];
 		renderedTriangleOffsetsBuffers = new ComputeBuffer[numTextureGroups];
+		textureDoubleSidedBuffers = new ComputeBuffer[numTextureGroups];
 
 		for (int i = 0; i < numTextureGroups; i++) {
 
 			renderedTriangleLocalStartIndexNative = new NativeArray<int>(numSidesPerGroup[i], Allocator.Temp);
 			renderedTriangleOffsetsNative = new NativeArray<int>(numSidesPerGroup[i], Allocator.Temp);
+			textureDoubleSidedNative = new NativeArray<uint>(numSidesPerGroup[i], Allocator.Temp);
 
 			int numTrianglesInGroup = 0;
 
@@ -1228,6 +1233,7 @@ public class ClothDispatcher : MonoBehaviour
 
 				renderedTriangleLocalStartIndexNative[sideCount] = numTrianglesInGroup;
 				renderedTriangleOffsetsNative[sideCount] = activeTriangleStartIndexNative[renderedToSortedNative[j]];
+				textureDoubleSidedNative[sideCount] = (uint)(cloths[clothIndex].textureSide == ClothSimulation.TextureSide.Both || cloths[clothIndex].textureSide == ClothSimulation.TextureSide.Front ? 1 : 0);
 
 				numTrianglesInGroup += cloths[clothIndex].numOneSidedTriangles * 3;
 
@@ -1236,8 +1242,9 @@ public class ClothDispatcher : MonoBehaviour
 				if (cloths[clothIndex].isDoubleSided) {
 					renderedTriangleLocalStartIndexNative[sideCount] = numTrianglesInGroup;
 					renderedTriangleOffsetsNative[sideCount] = activeBackTriangleStartIndexNative[renderedToSortedNative[j]] + numOneSidedTrianglesTotal * 3;
-					numTrianglesInGroup += cloths[clothIndex].numOneSidedTriangles * 3;
+					textureDoubleSidedNative[sideCount] = (uint)(cloths[clothIndex].textureSide == ClothSimulation.TextureSide.Both || cloths[clothIndex].textureSide == ClothSimulation.TextureSide.Back ? 1 : 0);
 
+					numTrianglesInGroup += cloths[clothIndex].numOneSidedTriangles * 3;
 					sideCount++;
 				}
 
@@ -1249,10 +1256,19 @@ public class ClothDispatcher : MonoBehaviour
 			renderedTriangleOffsetsBuffers[i] = ComputeHelper.CreateStructuredBuffer<int>(numSidesPerGroup[i]);
 			renderedTriangleOffsetsBuffers[i].SetData(renderedTriangleOffsetsNative);
 
+			textureDoubleSidedBuffers[i] = ComputeHelper.CreateStructuredBuffer<uint>(numSidesPerGroup[i]);
+			textureDoubleSidedBuffers[i].SetData(textureDoubleSidedNative);
+
 			matProps[i] = new MaterialPropertyBlock();
-			matProps[i].SetTexture("_BaseMap", textures[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothTexture]);
+			matProps[i].SetTexture("_BaseMap", materials[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothMaterial].colorMap);
+			matProps[i].SetTexture("_NormalMap", materials[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothMaterial].normalMap);
+			matProps[i].SetTexture("_MetalnessMap", materials[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothMaterial].metalnessMap);
+			matProps[i].SetTexture("_RoughnessMap", materials[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothMaterial].smoothnessMap);
+			matProps[i].SetTexture("_AmbientOcclusionMap", materials[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothMaterial].ambientOcclusionMap);
+			if (cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].alphaMap != null) matProps[i].SetTexture("_AlphaMap", cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].alphaMap);
 			matProps[i].SetBuffer("TriangleLocalStartIndex", renderedTriangleLocalStartIndexBuffers[i]);
 			matProps[i].SetBuffer("TriangleOffsets", renderedTriangleOffsetsBuffers[i]);
+			matProps[i].SetBuffer("TextureDoubleSided", textureDoubleSidedBuffers[i]);
 			matProps[i].SetInt("numSides", sideCount);
 
 			GraphicsBuffer.IndirectDrawArgs[] commandData = new GraphicsBuffer.IndirectDrawArgs[1];
@@ -1268,7 +1284,11 @@ public class ClothDispatcher : MonoBehaviour
 		}
 
 		clothMaterial.SetInt("oneSidedNumTriangles", numOneSidedTrianglesTotal * 3);
-		clothMaterial.SetTexture("_BaseMap", textures[0]);
+		clothMaterial.SetTexture("_BaseMap", materials[0].colorMap);
+		clothMaterial.SetTexture("_NormalMap", materials[0].normalMap);
+		clothMaterial.SetTexture("_MetalnessMap", materials[0].metalnessMap);
+		clothMaterial.SetTexture("_RoughnessMap", materials[0].smoothnessMap);
+		clothMaterial.SetTexture("_AmbientOcclusionMap", materials[0].ambientOcclusionMap);
 
 		//Debug.Log("Vertex Start Index: " + string.Join(", ", activeVertexStartIndexNative));
 		//Debug.Log("Simulated Vertex Start: " + string.Join(", ", simulatedVertexStartIndexNative));
@@ -1525,16 +1545,16 @@ public class ClothDispatcher : MonoBehaviour
 
 							if (cloths[sortedClothIndicesNative[i]].isDoubleSided) {
 								// Copy Vertices
-								size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
-								sourcePtr = Marshal.UnsafeAddrOfPinnedArrayElement(x, activeVertexStartIndexNative[i]);
-								destPtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[sortedClothIndicesNative[i]].x, cloths[sortedClothIndicesNative[i]].numOneSidedVerts);
-								UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
+								//size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
+								//sourcePtr = Marshal.UnsafeAddrOfPinnedArrayElement(x, activeVertexStartIndexNative[i]);
+								//destPtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[sortedClothIndicesNative[i]].x, cloths[sortedClothIndicesNative[i]].numOneSidedVerts);
+								//UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
 
 								// Copy Backside Normals
-								size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
-								sourcePtr = (IntPtr)((Vector3*)normalsInverseNative.GetUnsafePtr() + activeVertexStartIndexNative[i]); // Calculate offset for the subset
-								destPtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[sortedClothIndicesNative[i]].normals, cloths[sortedClothIndicesNative[i]].numOneSidedVerts);
-								UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
+								//size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
+								//sourcePtr = (IntPtr)((Vector3*)normalsInverseNative.GetUnsafePtr() + activeVertexStartIndexNative[i]); // Calculate offset for the subset
+								//destPtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[sortedClothIndicesNative[i]].normals, cloths[sortedClothIndicesNative[i]].numOneSidedVerts);
+								//UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
 							}
 						}
 
@@ -1556,6 +1576,7 @@ public class ClothDispatcher : MonoBehaviour
 		if (renderedToSortedNative.IsCreated) renderedToSortedNative.Dispose();
 		if (renderedTriangleLocalStartIndexNative.IsCreated) renderedTriangleLocalStartIndexNative.Dispose();
 		if (renderedTriangleOffsetsNative.IsCreated) renderedTriangleOffsetsNative.Dispose();
+		if (textureDoubleSidedNative.IsCreated) textureDoubleSidedNative.Dispose();
 	}
 
 	private void DisposeOrderingNatives() {
@@ -1605,6 +1626,7 @@ public class ClothDispatcher : MonoBehaviour
 	private void ReleaseRenderingBuffers() {
 		ComputeHelper.Release(renderedTriangleLocalStartIndexBuffers);
 		ComputeHelper.Release(renderedTriangleOffsetsBuffers);
+		ComputeHelper.Release(textureDoubleSidedBuffers);
 
 		ReleaseCommandBuffers();
 	}
@@ -1666,4 +1688,15 @@ public class ClothDispatcher : MonoBehaviour
 		array[index2] = temp;
 	}
 	#endregion
+}
+
+[System.Serializable]
+public struct ClothMaterial {
+	public string name;
+	public Texture2D colorMap;
+	public Texture2D normalMap;
+	public Texture2D smoothnessMap;
+	public Texture2D metalnessMap;
+	public Texture2D ambientOcclusionMap;
+	public float surfaceDensity;
 }

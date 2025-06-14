@@ -7,13 +7,14 @@ StructuredBuffer<int> Triangles;
 StructuredBuffer<float3> Normals;
 StructuredBuffer<float2> UVs;
 StructuredBuffer<int> TriangleOffsets;
-StructuredBuffer<int> TriangleLocalStartIndex;
+StructuredBuffer<uint> TriangleLocalStartIndex;
+StructuredBuffer<uint> TextureDoubleSided;
 
 uint numSides;
 uint oneSidedNumTriangles;
 //uint offset;
 
-void GetVertexData_float(uint vertexID : SV_VertexID, out float3 position, out float3 normal, out float2 texcoord)
+void GetVertexData_float(uint vertexID : SV_VertexID, out float3 position, out float3 normal, out float2 texcoord, out float2 texcoord2)
 {
     //InitIndirectDrawArgs(0);
     
@@ -48,7 +49,17 @@ void GetVertexData_float(uint vertexID : SV_VertexID, out float3 position, out f
     position = localPos;
     
     //normal = mul((float3x3) InstanceTransforms[instanceID], Normals[index] * (offsetID >= oneSidedNumTriangles ? -1 : 1)).xyz;
-    normal = Normals[index] * (offsetID >= oneSidedNumTriangles ? -1 : 1);
+    
+    if (offsetID >= oneSidedNumTriangles)
+    {
+        normal = Normals[index] * -1;
+        texcoord2 = TextureDoubleSided[sideID] == 1 ? UVs[index] : float2(0.0f, 0.0f);
+    }
+    else
+    {
+        normal = Normals[index];
+        texcoord2 = UVs[index];
+    }
     
     texcoord = UVs[index];
 }
