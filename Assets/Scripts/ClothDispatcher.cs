@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using Unity.Burst;
 using Unity.Jobs;
 using System.Threading;
+using static ClothSimulation;
 
 public class ClothDispatcher : MonoBehaviour
 {
@@ -28,7 +29,6 @@ public class ClothDispatcher : MonoBehaviour
 	public bool isRendering = true;
 	public bool gravityActive = true;
 	public bool windActive = true;
-	public Material clothMaterial;
 	public List<ClothMaterial> materials = new List<ClothMaterial>();
 	private Vector3[] clothsLastPosition;
 	private ClothSimulation[] cloths;
@@ -139,9 +139,11 @@ public class ClothDispatcher : MonoBehaviour
 	List<int> textureGroupLastIndex = new List<int>();
 	List<int> textureGroupFirstIndex = new List<int>();
 	List<int> numSidesPerGroup = new List<int>();
+	List<Material> textureGroupMaterial = new List<Material>();
 
 	[HideInInspector] public bool refreshAllQueued = true;
 	[HideInInspector] public bool refreshRenderingQueued = true;
+	[HideInInspector] public bool refreshPinnedQueued = false;
 	[HideInInspector] public bool numClothsChanged = false;
 
 	bool buffersGenerated = false;
@@ -235,9 +237,10 @@ public class ClothDispatcher : MonoBehaviour
 	// Start is called before the first frame update
 	void Start()
     {
-		clothMaterial = new Material(clothMaterial);
+		//clothMaterial = new Material(clothMaterial);
 
-		rp = new RenderParams(clothMaterial);
+		//rp = new RenderParams(clothMaterial);
+		rp = new RenderParams();
 		rp.worldBounds = new Bounds(Vector3.zero, 1000 * Vector3.one); // use tighter bounds
 
 		InitializeDispatcher();
@@ -248,6 +251,10 @@ public class ClothDispatcher : MonoBehaviour
     {
 		if (!buffersGenerated) {
 			return;
+		}
+
+		if (refreshPinnedQueued) {
+			UpdatePinnedVertices();
 		}
 
 		if (isSimulating && numSimulatedCloths != 0) {
@@ -403,7 +410,7 @@ public class ClothDispatcher : MonoBehaviour
 			//Graphics.RenderPrimitivesIndirect(rp, MeshTopology.Triangles, commandBuffer, commandCount);
 
 			for (int i = 0; i < commandBuffers.Length; i++) {
-				Graphics.DrawProceduralIndirect(clothMaterial, new Bounds(Vector3.zero, 1000 * Vector3.one), MeshTopology.Triangles, commandBuffers[i], 0, null, matProps[i], ShadowCastingMode.On, true, gameObject.layer);
+				Graphics.DrawProceduralIndirect(textureGroupMaterial[i], new Bounds(Vector3.zero, 1000 * Vector3.one), MeshTopology.Triangles, commandBuffers[i], 0, null, matProps[i], ShadowCastingMode.On, true, gameObject.layer);
 			}
 		}
 
@@ -970,10 +977,10 @@ public class ClothDispatcher : MonoBehaviour
 		clothCompute.SetInt("numCloths", numActiveCloths);
 		clothCompute.SetFloat("projectionIterations", projectionIterations);
 
-		clothMaterial.SetBuffer("Vertices", xBuffer);
-		clothMaterial.SetBuffer("Triangles", trianglesBuffer);
-		clothMaterial.SetBuffer("Normals", normalsBuffer);
-		clothMaterial.SetBuffer("UVs", uvBuffer);
+		//clothMaterial.SetBuffer("Vertices", xBuffer);
+		//clothMaterial.SetBuffer("Triangles", trianglesBuffer);
+		//clothMaterial.SetBuffer("Normals", normalsBuffer);
+		//clothMaterial.SetBuffer("UVs", uvBuffer);
 
 		// Set Simulation Buffers
 
@@ -1163,6 +1170,7 @@ public class ClothDispatcher : MonoBehaviour
 		textureGroupFirstIndex?.Clear();
 		textureGroupLastIndex?.Clear();
 		numSidesPerGroup?.Clear();
+		textureGroupMaterial?.Clear();
 		renderingGenerated = false;
 
 		ReleaseRenderingBuffers();
@@ -1259,17 +1267,23 @@ public class ClothDispatcher : MonoBehaviour
 			textureDoubleSidedBuffers[i] = ComputeHelper.CreateStructuredBuffer<uint>(numSidesPerGroup[i]);
 			textureDoubleSidedBuffers[i].SetData(textureDoubleSidedNative);
 
+			int matIndex = (int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothMaterial;
+			//textureGroupMaterialIndex.Add(matIndex);
+
 			matProps[i] = new MaterialPropertyBlock();
-			matProps[i].SetTexture("_BaseMap", materials[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothMaterial].colorMap);
-			matProps[i].SetTexture("_NormalMap", materials[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothMaterial].normalMap);
-			matProps[i].SetTexture("_MetalnessMap", materials[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothMaterial].metalnessMap);
-			matProps[i].SetTexture("_RoughnessMap", materials[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothMaterial].smoothnessMap);
-			matProps[i].SetTexture("_AmbientOcclusionMap", materials[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothMaterial].ambientOcclusionMap);
-			if (cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].alphaMap != null) matProps[i].SetTexture("_AlphaMap", cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].alphaMap);
 			matProps[i].SetBuffer("TriangleLocalStartIndex", renderedTriangleLocalStartIndexBuffers[i]);
 			matProps[i].SetBuffer("TriangleOffsets", renderedTriangleOffsetsBuffers[i]);
 			matProps[i].SetBuffer("TextureDoubleSided", textureDoubleSidedBuffers[i]);
 			matProps[i].SetInt("numSides", sideCount);
+
+			textureGroupMaterial.Add(materials[matIndex].material);
+			//materials[matIndex].material = new Material(materials[matIndex].material);
+			textureGroupMaterial[i].SetBuffer("Vertices", xBuffer);
+			textureGroupMaterial[i].SetBuffer("Triangles", trianglesBuffer);
+			textureGroupMaterial[i].SetBuffer("Normals", normalsBuffer);
+			textureGroupMaterial[i].SetBuffer("UVs", uvBuffer);
+			textureGroupMaterial[i].SetInt("oneSidedNumTriangles", numOneSidedTrianglesTotal * 3);
+			textureGroupMaterial[i].SetInt("_InEditor", 0);
 
 			GraphicsBuffer.IndirectDrawArgs[] commandData = new GraphicsBuffer.IndirectDrawArgs[1];
 
@@ -1282,63 +1296,6 @@ public class ClothDispatcher : MonoBehaviour
 			commandBuffers[i].SetData(commandData);
 
 		}
-
-		clothMaterial.SetInt("oneSidedNumTriangles", numOneSidedTrianglesTotal * 3);
-		clothMaterial.SetTexture("_BaseMap", materials[0].colorMap);
-		clothMaterial.SetTexture("_NormalMap", materials[0].normalMap);
-		clothMaterial.SetTexture("_MetalnessMap", materials[0].metalnessMap);
-		clothMaterial.SetTexture("_RoughnessMap", materials[0].smoothnessMap);
-		clothMaterial.SetTexture("_AmbientOcclusionMap", materials[0].ambientOcclusionMap);
-
-		//Debug.Log("Vertex Start Index: " + string.Join(", ", activeVertexStartIndexNative));
-		//Debug.Log("Simulated Vertex Start: " + string.Join(", ", simulatedVertexStartIndexNative));
-		//Debug.Log("Vertex to Triangles: " + string.Join(", ", vertexToTrianglesNative));
-
-		//Debug.Log("Triangles Start Index: " + string.Join(", ", activeTriangleStartIndexNative));
-		//Debug.Log("Back Triangles Start: " + string.Join(", ", activeBackTriangleStartIndexNative));
-		//Debug.Log("Triangles: " + string.Join(", ", trianglesNative));
-		//Debug.Log("Triangles (1/4): " + string.Join(", ", trianglesNative.Take(numOneSidedTrianglesTotal * 3 / numActiveCloths)));
-		//Debug.Log("Triangles (2/4): " + string.Join(", ", trianglesNative.Skip(numOneSidedTrianglesTotal * 3 / numActiveCloths).Take(numOneSidedTrianglesTotal * 3 / numActiveCloths)));
-		//Debug.Log("Triangles (3/4): " + string.Join(", ", trianglesNative.Skip(numOneSidedTrianglesTotal * 3 / numActiveCloths * 2).Take(numOneSidedTrianglesTotal * 3 / numActiveCloths)));
-		//Debug.Log("Triangles (4/4): " + string.Join(", ", trianglesNative.Skip(numOneSidedTrianglesTotal * 3 / numActiveCloths * 3).Take(numOneSidedTrianglesTotal * 3 / numActiveCloths)));
-
-		//Debug.Log("Triangles (1/4): " + string.Join(", ", trianglesNative.Take(activeTriangleStartIndexNative[1])));
-		//Debug.Log("Triangles (2/4): " + string.Join(", ", trianglesNative.Skip(activeTriangleStartIndexNative[1]).Take(activeTriangleStartIndexNative[1])));
-		//Debug.Log("Triangles (3/4): " + string.Join(", ", trianglesNative.Skip(trianglesNative.Length / 2).Take(activeTriangleStartIndexNative[1])));
-		//Debug.Log("Triangles (4/4): " + string.Join(", ", trianglesNative.Skip(trianglesNative.Length / 2 + activeTriangleStartIndexNative[1]).Take(activeTriangleStartIndexNative[1])));
-
-		//Debug.Log("Triangle Offsets: " + string.Join(", ", renderedTriangleOffsetsNative));
-		//Debug.Log("Triangle Local Start Index: " + string.Join(", ", renderedTriangleLocalStartIndexNative));
-
-		/*int[] offsetIDs = new int[numTrianglesTotal * 3];
-		int[] sideIDs = new int[numTrianglesTotal * 3];
-		for (int i = 0; i < numTrianglesTotal * 3; i++) {
-
-			if (numSidesPerGroup[0] > 0) {
-				sideIDs[i] = 0;
-
-				for (int j = 1; j < numSidesPerGroup[0]; j++) {
-					if (i < renderedTriangleLocalStartIndexNative[j]) {
-						sideIDs[i] = j - 1;
-						break;
-					} else if (j == numSidesPerGroup[0] - 1) {
-						sideIDs[i] = j;
-						break;
-					}
-
-				}
-			}
-
-			offsetIDs[i] = i + renderedTriangleOffsetsNative[sideIDs[i]] - renderedTriangleLocalStartIndexNative[sideIDs[i]];
-		}
-
-		Debug.Log("Side IDs: " + string.Join(", ", sideIDs));
-		Debug.Log("Side To Instance IDs: " + string.Join(", ", sideToInstanceNative));
-		Debug.Log("Offset Triangle IDs: " + string.Join(", ", offsetIDs));*/
-		//Debug.Log("X: " + string.Join(", ", xNative));
-		//Debug.Log("Loop Steps: " + string.Join(", ", numStepsPerLoop));
-		//Debug.Log("Substeps Index Per Loop: " + string.Join(", ", substepsIndexPerLoop));
-		//Debug.Log("Verts Per Substep: " + string.Join(", ", numVertsPerSubstepNative));
 
 		DisposeTempRenderingNatives();
 
@@ -1385,7 +1342,7 @@ public class ClothDispatcher : MonoBehaviour
 		wNative.Dispose();
 	}
 
-	public void UpdatePinnedVertices() {
+	private void UpdatePinnedVertices() {
 		if (!buffersGenerated || numSimulatedVerts == 0) return;
 
 		pinnedVertBuffer?.Release();
@@ -1444,10 +1401,14 @@ public class ClothDispatcher : MonoBehaviour
 		vertToPinnedBuffer.SetData(vertToPinnedNative);
 		clothCompute.SetBuffer(predictPositionKernel, "vertToPinned", vertToPinnedBuffer);
 
-		pinnedVertBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numPinnedVertices);
+		if (numPinnedVertices > 0) {
+			pinnedVertBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numPinnedVertices);
+		}
+		
 
 		wNative.Dispose();
 		vertToPinnedNative.Dispose();
+		refreshPinnedQueued = false;
 	}
 
 	public void UpdateConstraintAlphas() {
@@ -1693,10 +1654,6 @@ public class ClothDispatcher : MonoBehaviour
 [System.Serializable]
 public struct ClothMaterial {
 	public string name;
-	public Texture2D colorMap;
-	public Texture2D normalMap;
-	public Texture2D smoothnessMap;
-	public Texture2D metalnessMap;
-	public Texture2D ambientOcclusionMap;
+	public Material material;
 	public float surfaceDensity;
 }

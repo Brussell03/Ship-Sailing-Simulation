@@ -47,7 +47,9 @@ public class ClothEditor : Editor {
 
 				if (GUILayout.Button("Reset Cloth")) {
 					cloth.isInitialized = false;
-					cloth._pinnedVertices.Clear();
+					cloth.pinnedVertices.Clear();
+					cloth.modifiedVertices.Clear();
+					cloth.selectedVertices.Clear();
 
 					cloth.Init();
 				}
