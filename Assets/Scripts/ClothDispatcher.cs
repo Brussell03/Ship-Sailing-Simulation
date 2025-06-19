@@ -30,7 +30,7 @@ public class ClothDispatcher : MonoBehaviour
 	public bool gravityActive = true;
 	public bool windActive = true;
 	public List<ClothMaterial> materials = new List<ClothMaterial>();
-	public List<Texture2D> textures = new List<Texture2D>();
+	public List<ClothTexture> textures = new List<ClothTexture>();
 	private Vector3[] clothsLastPosition;
 	private ClothSimulation[] cloths;
 
@@ -280,10 +280,11 @@ public class ClothDispatcher : MonoBehaviour
 				if (windActive) {
 					float time = Time.realtimeSinceStartup;
 					float frequencyFactor = Mathf.PingPong(time, UnityEngine.Random.Range(-0.2f, 0.2f));
+					float windSpeedVar = windSpeed * (1f + Mathf.Cos(time * frequencyFactor / 8f) / 10f);
 					float chaosMagnitude = Mathf.Sin(time * 1f * frequencyFactor) / 2f;
-					float verticalFactor = Mathf.Sin(time * 1f * frequencyFactor + Mathf.PingPong(time, UnityEngine.Random.Range(5f, 20f)));
+					float verticalFactor = Mathf.Sin(time * 1f * frequencyFactor + Mathf.PingPong(time, UnityEngine.Random.Range(5f, 20f))) / 4f;
 					float horizontalFactor = Mathf.Sin(time * 1f * frequencyFactor + Mathf.PingPong(time, UnityEngine.Random.Range(5f, 20f)));
-					windVectorsNative[i] = applyWindNative[i] ? transform.forward * windSpeed * ((1f - windChaos / 4f) + chaosMagnitude * windChaos) + (transform.up * verticalFactor + transform.right * horizontalFactor) * chaosMagnitude * windChaos * windSpeed * 0.5f : Vector3.zero;
+					windVectorsNative[i] = applyWindNative[i] ? (transform.forward * ((1f - windChaos / 4f) + chaosMagnitude * windChaos) + (transform.up * verticalFactor + transform.right * horizontalFactor) * chaosMagnitude * windChaos * 0.5f) * windSpeedVar : Vector3.zero;
 				} else {
 					windVectorsNative[i] = Vector3.zero;
 				}
@@ -1275,7 +1276,6 @@ public class ClothDispatcher : MonoBehaviour
 				int currentMaterial = (int)cloths[clothIndex].clothMaterial;
 				materialToSortedNative[numAddedCloths] = i;
 				materialSortedClothsNative[numAddedCloths++] = clothIndex;
-				//numSidesPerGroup.Add(cloths[clothIndex].isDoubleSided ? 2 : 1);
 
 				for (int j = i + 1; j < numActiveCloths; j++) {
 
@@ -1283,7 +1283,6 @@ public class ClothDispatcher : MonoBehaviour
 
 						materialToSortedNative[numAddedCloths] = j;
 						materialSortedClothsNative[numAddedCloths++] = sortedClothIndicesNative[j];
-						//numSidesPerGroup[numMaterialGroups] += cloths[sortedClothIndicesNative[j]].isDoubleSided ? 2 : 1;
 
 					}
 				}
@@ -1296,7 +1295,6 @@ public class ClothDispatcher : MonoBehaviour
 		numAddedCloths = 0;
 		int numTextureGroups = 0;
 		for (int i = 0; i < numMaterialGroups; i++) {
-			
 			for (int j = materialGroupFirstIndex[i]; j < materialGroupLastIndex[i] + 1; j++) {
 
 				int clothIndex = materialSortedClothsNative[j];
@@ -1306,18 +1304,17 @@ public class ClothDispatcher : MonoBehaviour
 					textureGroupToMaterialIndex.Add(i);
 
 					int currentTexture = (int)cloths[clothIndex].clothTexture;
-					renderedToSortedNative[numAddedCloths] = sortedClothIndicesNative.IndexOf(clothIndex);
+					renderedToSortedNative[numAddedCloths] = materialToSortedNative[j];
 					textureSortedClothsNative[numAddedCloths++] = clothIndex;
 					numSidesPerGroup.Add(cloths[clothIndex].isDoubleSided ? 2 : 1);
 
 					for (int k = j + 1; k < materialGroupLastIndex[i] + 1; k++) {
 
-						if ((int)cloths[sortedClothIndicesNative[k]].clothTexture == currentTexture) {
+						if ((int)cloths[materialSortedClothsNative[k]].clothTexture == currentTexture) {
 
-							renderedToSortedNative[numAddedCloths] = sortedClothIndicesNative.IndexOf(k);
-							textureSortedClothsNative[numAddedCloths++] = sortedClothIndicesNative[k];
-							numSidesPerGroup[numTextureGroups] += cloths[sortedClothIndicesNative[k]].isDoubleSided ? 2 : 1;
-							textureGroupToMaterialIndex.Add(i);
+							renderedToSortedNative[numAddedCloths] = materialToSortedNative[k];
+							textureSortedClothsNative[numAddedCloths++] = materialSortedClothsNative[k];
+							numSidesPerGroup[numTextureGroups] += cloths[materialSortedClothsNative[k]].isDoubleSided ? 2 : 1;
 
 						}
 					}
@@ -1384,8 +1381,6 @@ public class ClothDispatcher : MonoBehaviour
 			textureDoubleSidedBuffers[i] = ComputeHelper.CreateStructuredBuffer<uint>(numSidesPerGroup[i]);
 			textureDoubleSidedBuffers[i].SetData(textureDoubleSidedNative);
 
-			//materialGroupMaterialIndex.Add(matIndex);
-
 			matProps[i] = new MaterialPropertyBlock();
 			matProps[i].SetBuffer("TriangleLocalStartIndex", renderedTriangleLocalStartIndexBuffers[i]);
 			matProps[i].SetBuffer("TriangleOffsets", renderedTriangleOffsetsBuffers[i]);
@@ -1394,7 +1389,7 @@ public class ClothDispatcher : MonoBehaviour
 
 			if ((int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothTexture > 0) {
 				matProps[i].SetInt("_UseTexture", 1);
-				matProps[i].SetTexture("_Texture", textures[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothTexture]);
+				matProps[i].SetTexture("_Texture", textures[(int)cloths[textureSortedClothsNative[textureGroupFirstIndex[i]]].clothTexture].texture);
 			}
 
 			GraphicsBuffer.IndirectDrawArgs[] commandData = new GraphicsBuffer.IndirectDrawArgs[1];
@@ -1772,4 +1767,9 @@ public struct ClothMaterial {
 	public string name;
 	public Material material;
 	public float surfaceDensity;
+}
+
+[Serializable] public struct ClothTexture {
+	public string name;
+	public Texture2D texture;
 }

@@ -129,8 +129,8 @@ public class ClothSimulation : MonoBehaviour
 	[HideInInspector] public List<int>[] vertexToTriangles { get; private set; }
 	[HideInInspector, SerializeField] public List<int> _pinnedVertices = new List<int>();
 	public List<int> pinnedVertices => _pinnedVertices; // Read-only reference variable to _pinnedVertices
-	[HideInInspector, SerializeField] private Dictionary<int, Vector3> _modifiedVertices = new Dictionary<int, Vector3>();
-	public Dictionary<int, Vector3> modifiedVertices => _modifiedVertices;
+	[HideInInspector, SerializeField] private List<IndexAndVector3> _modifiedVertices = new List<IndexAndVector3>();
+	public List<IndexAndVector3> modifiedVertices => _modifiedVertices;
 
 	public List<Vector3> pinnedVertLocalPos { get; private set; }
 	private List<float> pinnedVertInvMass = new List<float>();
@@ -158,6 +158,8 @@ public class ClothSimulation : MonoBehaviour
 	private float hashSpacing = 1f;
 	private Vector3 pinnedCenter;
 	[SerializeField] public List<ConnectedVertex> connectedVertices = new List<ConnectedVertex>();
+	private int numRowsOnInit;
+	private int numColumnsOnInit;
 	public int clothIndex { get; set; }
 
 	public enum ClothMaterial : int {
@@ -225,6 +227,7 @@ public class ClothSimulation : MonoBehaviour
 		}
 
 		isActive = true;
+		liveEdit = false;
 
 		personalRb.constraints = RigidbodyConstraints.FreezeAll;
 
@@ -241,6 +244,13 @@ public class ClothSimulation : MonoBehaviour
 		} else {
 			collider.enabled = false;
 			dispatcher.materials[(int)clothMaterial].material.SetInt("_InEditor", 1);
+
+			if ((int)clothTexture > 0) {
+				Material mat = new Material(dispatcher.materials[(int)clothMaterial].material);
+				mat.SetInt("_UseTexture", 1);
+				mat.SetTexture("_Texture", dispatcher.textures[(int)clothTexture].texture);
+				meshRenderer.sharedMaterial = mat;
+			}
 		}
 
 #if UNITY_EDITOR
@@ -422,6 +432,27 @@ public class ClothSimulation : MonoBehaviour
 		hashSpacing = (maxWidth > maxHeight ? maxWidth : maxHeight) * 2f / (numColumns + numRows);
 
 		personalRb.useGravity = applyGravity;
+
+		numRowsOnInit = numRows;
+		numColumnsOnInit = numColumns;
+
+		for (int i = 0; i < modifiedVertices.Count; i++) {
+
+			if (!Application.isPlaying && isDoubleSided) {
+				x[modifiedVertices[i].index] = modifiedVertices[i].vector;
+
+				if (isDoubleSided) {
+					x[modifiedVertices[i].index + numOneSidedVerts] = modifiedVertices[i].vector;
+				}
+
+			} else if (Application.isPlaying) {
+				x[modifiedVertices[i].index] = transform.TransformPoint(modifiedVertices[i].vector);
+
+				if (pinnedVertices.Contains(modifiedVertices[i].index)) {
+					pinnedVertLocalPos[pinnedVertices.IndexOf(modifiedVertices[i].index)] = modifiedVertices[i].vector;
+				}
+			}
+		}
 
 #if UNITY_EDITOR
 		if (!Application.isPlaying) {
@@ -1497,17 +1528,17 @@ public class ClothSimulation : MonoBehaviour
 
 				// Update UV's
 				if (clothShape == ClothShape.Quadrilateral) {
-					for (int i = 0; i < numRows + 1; i++) {
-						float rowWidth = (bottomWidth - topWidth) / numRows * i + topWidth;
-						float rowOffset = Mathf.Lerp(topCenter - topWidth / 2f, bottomCenter - bottomWidth / 2f, (float)i / numRows);
+					for (int i = 0; i < numRowsOnInit + 1; i++) {
+						float rowWidth = (bottomWidth - topWidth) / numRowsOnInit * i + topWidth;
+						float rowOffset = Mathf.Lerp(topCenter - topWidth / 2f, bottomCenter - bottomWidth / 2f, (float)i / numRowsOnInit);
 
-						for (int j = 0; j < numColumns + 1; j++) {
-							float colHeight = (rightHeight - leftHeight) / numColumns * j + leftHeight;
-							float colOffset = Mathf.Lerp(leftCenter - leftHeight / 2f, rightCenter - rightHeight / 2f, (float)j / numColumns);
+						for (int j = 0; j < numColumnsOnInit + 1; j++) {
+							float colHeight = (rightHeight - leftHeight) / numColumnsOnInit * j + leftHeight;
+							float colOffset = Mathf.Lerp(leftCenter - leftHeight / 2f, rightCenter - rightHeight / 2f, (float)j / numColumnsOnInit);
 
-							int index = j + i * (numColumns + 1);
-							float xPos = (j * rowWidth) / numColumns + rowOffset;
-							float yPos = colHeight - (i * colHeight) / numRows + colOffset;
+							int index = j + i * (numColumnsOnInit + 1);
+							float xPos = (j * rowWidth) / numColumnsOnInit + rowOffset;
+							float yPos = colHeight - (i * colHeight) / numRowsOnInit + colOffset;
 
 							uv[index] = new Vector2(xPos, yPos);
 
@@ -1523,18 +1554,18 @@ public class ClothSimulation : MonoBehaviour
 						}
 					}
 				} else if (clothShape == ClothShape.Trapezoid) {
-					int minSubdivision = (int)Mathf.Min(numRows, numColumns);
+					int minSubdivision = (int)Mathf.Min(numRowsOnInit, numColumnsOnInit);
 					int ind = 0;
-					for (int i = 0; i < numRows + 1; i++) {
-						float rowWidth = (bottomWidth - topWidth) / numRows * i + topWidth;
-						float rowOffset = Mathf.Lerp(topCenter - topWidth / 2f, bottomCenter - bottomWidth / 2f, (float)i / numRows);
+					for (int i = 0; i < numRowsOnInit + 1; i++) {
+						float rowWidth = (bottomWidth - topWidth) / numRowsOnInit * i + topWidth;
+						float rowOffset = Mathf.Lerp(topCenter - topWidth / 2f, bottomCenter - bottomWidth / 2f, (float)i / numRowsOnInit);
 
-						for (int j = 0; j < numColumns + 1; j++) {
-							float colHeight = (rightHeight - leftHeight) / numColumns * j + leftHeight;
-							float colOffset = Mathf.Lerp(leftCenter - leftHeight / 2f, rightCenter - rightHeight / 2f, (float)j / numColumns);
+						for (int j = 0; j < numColumnsOnInit + 1; j++) {
+							float colHeight = (rightHeight - leftHeight) / numColumnsOnInit * j + leftHeight;
+							float colOffset = Mathf.Lerp(leftCenter - leftHeight / 2f, rightCenter - rightHeight / 2f, (float)j / numColumnsOnInit);
 
-							float xPos = (j * rowWidth) / numColumns + rowOffset;
-							float yPos = colHeight - (i * colHeight) / numRows + colOffset;
+							float xPos = (j * rowWidth) / numColumnsOnInit + rowOffset;
+							float yPos = colHeight - (i * colHeight) / numRowsOnInit + colOffset;
 
 							if (j >= minSubdivision - i) {
 
@@ -1569,14 +1600,16 @@ public class ClothSimulation : MonoBehaviour
 				//if (dispatcher.materials[(int)clothMaterial].alphaMap != null) mat.SetTexture("_AlphaMap", dispatcher.materials[(int)clothMaterial].alphaMap);
 				//meshRenderer.sharedMaterial = mat;
 				//Material mat = new Material(meshRenderer.sharedMaterial);
-				dispatcher.materials[(int)clothMaterial].material.SetInt("_InEditor", 1);
 
-				meshRenderer.sharedMaterial = new Material(dispatcher.materials[(int)clothMaterial].material);
-				meshRenderer.sharedMaterial.SetTexture("_Texture", dispatcher.textures[(int)clothTexture]);
+				Material mat = new Material(dispatcher.materials[(int)clothMaterial].material);
 				if ((int)clothTexture > 0) {
-					meshRenderer.sharedMaterial.SetTexture("_Texture", dispatcher.textures[(int)clothTexture]);
-					meshRenderer.sharedMaterial.SetInt("_UseTexture", 1);
+					mat.SetInt("_UseTexture", 1);
+					mat.SetTexture("_Texture", dispatcher.textures[(int)clothTexture].texture);
+				} else {
+					mat.SetInt("_UseTexture", 0);
+					mat.SetTexture("_Texture", null);
 				}
+				meshRenderer.sharedMaterial = mat;
 			}
 		}
 	}
@@ -1621,7 +1654,16 @@ public class ClothSimulation : MonoBehaviour
 
 					if ((j < cornerPinDimX || j > numColumns - cornerPinDimX) && (i < cornerPinDimY || i > numRows - cornerPinDimY)) {
 						if (!pinnedVertices.Contains(i * (numColumns + 1) + j)) {
-							pinnedVertices.Add(i * (numColumns + 1) + j);
+
+							bool inConnected = false;
+							for (int k = 0; k < connectedVertices.Count; j++) {
+								if (connectedVertices[k].vertIndex == i * (numColumns + 1) + j) {
+									inConnected = true;
+									break;
+								}
+							}
+
+							if (!inConnected) pinnedVertices.Add(i * (numColumns + 1) + j);
 						}
 					}
 
@@ -1630,7 +1672,16 @@ public class ClothSimulation : MonoBehaviour
 					if (j >= minSubdivision - i) {
 						if ((j < cornerPinDimX || j > numColumns - cornerPinDimX) && (i < cornerPinDimY || i > numRows - cornerPinDimY)) {
 							if (!pinnedVertices.Contains(index)) {
-								pinnedVertices.Add(index);
+
+								bool inConnected = false;
+								for (int k = 0; k < connectedVertices.Count; j++) {
+									if (connectedVertices[k].vertIndex == index) {
+										inConnected = true;
+										break;
+									}
+								}
+
+								if (!inConnected) pinnedVertices.Add(index);
 							}
 						}
 
@@ -1654,7 +1705,16 @@ public class ClothSimulation : MonoBehaviour
 
 					if (j < pinWidth) {
 						if (!pinnedVertices.Contains(i * (numColumns + 1) + j)) {
-							pinnedVertices.Add(i * (numColumns + 1) + j);
+
+							bool inConnected = false;
+							for (int k = 0; k < connectedVertices.Count; j++) {
+								if (connectedVertices[k].vertIndex == i * (numColumns + 1) + j) {
+									inConnected = true;
+									break;
+								}
+							}
+
+							if (!inConnected) pinnedVertices.Add(i * (numColumns + 1) + j);
 						}
 					}
 
@@ -1663,7 +1723,16 @@ public class ClothSimulation : MonoBehaviour
 					if (j >= minSubdivision - i) {
 						if (j < pinWidth || j < minSubdivision - i + pinWidth) {
 							if (!pinnedVertices.Contains(index)) {
-								pinnedVertices.Add(index);
+
+								bool inConnected = false;
+								for (int k = 0; k < connectedVertices.Count; j++) {
+									if (connectedVertices[k].vertIndex == index) {
+										inConnected = true;
+										break;
+									}
+								}
+
+								if (!inConnected) pinnedVertices.Add(index);
 							}
 						}
 
@@ -1687,7 +1756,16 @@ public class ClothSimulation : MonoBehaviour
 
 					if (j > numColumns - pinWidth) {
 						if (!pinnedVertices.Contains(i * (numColumns + 1) + j)) {
-							pinnedVertices.Add(i * (numColumns + 1) + j);
+
+							bool inConnected = false;
+							for (int k = 0; k < connectedVertices.Count; j++) {
+								if (connectedVertices[k].vertIndex == i * (numColumns + 1) + j) {
+									inConnected = true;
+									break;
+								}
+							}
+
+							if (!inConnected) pinnedVertices.Add(i * (numColumns + 1) + j);
 						}
 					}
 
@@ -1696,7 +1774,16 @@ public class ClothSimulation : MonoBehaviour
 					if (j >= minSubdivision - i) {
 						if (j > numColumns - pinWidth) {
 							if (!pinnedVertices.Contains(index)) {
-								pinnedVertices.Add(index);
+
+								bool inConnected = false;
+								for (int k = 0; k < connectedVertices.Count; j++) {
+									if (connectedVertices[k].vertIndex == index) {
+										inConnected = true;
+										break;
+									}
+								}
+
+								if (!inConnected) pinnedVertices.Add(index);
 							}
 						}
 
@@ -1720,7 +1807,16 @@ public class ClothSimulation : MonoBehaviour
 
 					if (i < pinWidth) {
 						if (!pinnedVertices.Contains(i * (numColumns + 1) + j)) {
-							pinnedVertices.Add(i * (numColumns + 1) + j);
+
+							bool inConnected = false;
+							for (int k = 0; k < connectedVertices.Count; j++) {
+								if (connectedVertices[k].vertIndex == i * (numColumns + 1) + j) {
+									inConnected = true;
+									break;
+								}
+							}
+
+							if (!inConnected) pinnedVertices.Add(i * (numColumns + 1) + j);
 						}
 					}
 
@@ -1729,7 +1825,16 @@ public class ClothSimulation : MonoBehaviour
 					if (j >= minSubdivision - i) {
 						if (i < pinWidth) {
 							if (!pinnedVertices.Contains(index)) {
-								pinnedVertices.Add(index);
+
+								bool inConnected = false;
+								for (int k = 0; k < connectedVertices.Count; j++) {
+									if (connectedVertices[k].vertIndex == index) {
+										inConnected = true;
+										break;
+									}
+								}
+
+								if (!inConnected) pinnedVertices.Add(index);
 							}
 						}
 
@@ -1753,7 +1858,16 @@ public class ClothSimulation : MonoBehaviour
 
 					if (i > numRows - pinWidth) {
 						if (!pinnedVertices.Contains(i * (numColumns + 1) + j)) {
-							pinnedVertices.Add(i * (numColumns + 1) + j);
+
+							bool inConnected = false;
+							for (int k = 0; k < connectedVertices.Count; j++) {
+								if (connectedVertices[k].vertIndex == i * (numColumns + 1) + j) {
+									inConnected = true;
+									break;
+								}
+							}
+
+							if (!inConnected) pinnedVertices.Add(i * (numColumns + 1) + j);
 						}
 					}
 
@@ -1762,7 +1876,16 @@ public class ClothSimulation : MonoBehaviour
 					if (j >= minSubdivision - i) {
 						if (i > numRows - pinWidth) {
 							if (!pinnedVertices.Contains(index)) {
-								pinnedVertices.Add(index);
+
+								bool inConnected = false;
+								for (int k = 0; k < connectedVertices.Count; j++) {
+									if (connectedVertices[k].vertIndex == index) {
+										inConnected = true;
+										break;
+									}
+								}
+
+								if (!inConnected) pinnedVertices.Add(index);
 							}
 						}
 
@@ -1787,7 +1910,7 @@ public class ClothSimulation : MonoBehaviour
 			return;
 		}
 
-		Vector3[] worldX = new Vector3[x.Length];
+		/*Vector3[] worldX = new Vector3[x.Length];
 		transform.TransformPoints(x, worldX);
 		Vector3 size = Vector3.one * distBetweenHandles * 1.5f;
 
@@ -1796,7 +1919,7 @@ public class ClothSimulation : MonoBehaviour
 				Gizmos.color = Color.red;
 				Gizmos.DrawWireCube(worldX[i], size);
 			}
-		}
+		}*/
 	}
 #endif
 }
@@ -1984,5 +2107,16 @@ class Hash {
 		}
 
 		firstAdjId[maxNumObjects] = num;
+	}
+}
+
+[Serializable]
+public struct IndexAndVector3 {
+	public int index;
+	public Vector3 vector;
+
+	public IndexAndVector3(int index, Vector3 vector) {
+		this.index = index;
+		this.vector = vector;
 	}
 }

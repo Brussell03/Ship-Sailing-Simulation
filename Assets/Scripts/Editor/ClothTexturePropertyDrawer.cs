@@ -12,7 +12,7 @@ public class ClothTexturePropertyDrawer : PropertyDrawer {
 
 		ClothDispatcher dispatcher = clothSimulation.dispatcher;
 
-		List<Texture2D> textures = null;
+		List<ClothTexture> textures = null;
 		if (dispatcher != null) textures = dispatcher.textures;
 
 		if (textures != null && textures.Count > 0) {
@@ -20,7 +20,7 @@ public class ClothTexturePropertyDrawer : PropertyDrawer {
 			int currentSelectedIndex = property.intValue;
 
 			// Create display names for the dropdown
-			string[] texturesNames = textures.Select(tex => tex == null ? "None" : tex.name).ToArray();
+			string[] texturesNames = textures.Select(tex => tex.name).ToArray();
 
 			// Draw the dropdown
 			int newSelectedIndex = EditorGUI.Popup(position, label.text, currentSelectedIndex, texturesNames);

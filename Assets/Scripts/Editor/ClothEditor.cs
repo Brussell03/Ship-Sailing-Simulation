@@ -2,6 +2,8 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
+using System.Linq;
+using log4net.Util;
 
 [CustomEditor(typeof(ClothSimulation))]
 public class ClothEditor : Editor {
@@ -73,6 +75,12 @@ public class ClothEditor : Editor {
 			if (cloth.isShowingVerts) {
 				EditorGUILayout.BeginHorizontal();
 				{
+					if (GUILayout.Button("Reset Shape")) {
+						cloth.isInitialized = false;
+						cloth.modifiedVertices.Clear();
+						cloth.Init();
+					}
+
 					if (cloth.selectedVertices != null) {
 						if (GUILayout.Button("Clear Selected")) {
 							cloth.selectedVertices.Clear();
@@ -94,11 +102,33 @@ public class ClothEditor : Editor {
 							EditorUtility.SetDirty(cloth);
 						}
 					}
+
+					if (cloth.selectedVertices != null) {
+						if (GUILayout.Button("Reset Selected")) {
+							for (int i = 0; i < cloth.selectedVertices.Count; i++) {
+								int modifiedListIndex = -1;
+								for (int k = 0; k < cloth.modifiedVertices.Count; k++) {
+									if (cloth.selectedVertices[i] == cloth.modifiedVertices[i].index) {
+										modifiedListIndex = k;
+										break;
+									}
+								}
+
+								if (modifiedListIndex > -1) {
+									// Reset Vertices
+									cloth.modifiedVertices.RemoveAt(modifiedListIndex);
+								}
+							}
+							EditorUtility.SetDirty(cloth);
+						}
+					}
 				}
 				EditorGUILayout.EndHorizontal();
 
 			}
 
+			EditorGUILayout.Space();
+			EditorGUILayout.LabelField($"Modified Vertices: {cloth.modifiedVertices.Count}", EditorStyles.miniBoldLabel);
 
 			EditorGUILayout.Space();
 			EditorGUILayout.LabelField("Quick Pinning Options", EditorStyles.miniBoldLabel);
@@ -208,15 +238,62 @@ public class ClothEditor : Editor {
 		for (int i = 0; i < cloth.x.Length / 2; i++) {
 			Vector3 worldX = cloth.transform.TransformPoint(cloth.x[i]);
 			float handleSize = HandleUtility.GetHandleSize(worldX) * 0.4f;
-			if (handleSize > cloth.distBetweenHandles / 1.5f) {
-				handleSize = cloth.distBetweenHandles / 1.5f;
+
+			if (handleSize > cloth.distBetweenHandles) {
+				handleSize = cloth.distBetweenHandles;
 			}
 
-			Handles.color = cloth.selectedVertices.Contains(i) ? Color.red : Color.yellow;
+			Handles.color = Color.yellow;
+			for (int j = 0; j < cloth.connectedVertices.Count; j++) {
+				if (cloth.connectedVertices[j].vertIndex == i) {
+					Handles.color = Color.blue;
+					break;
+				}
+			}
+			Handles.color = cloth.pinnedVertices.Contains(i) ? Color.red : Handles.color;
+
+			bool isSelected = cloth.selectedVertices.Contains(i);
 
 			if (Handles.Button(worldX, Quaternion.identity, handleSize, handleSize * 1.5f, Handles.CubeHandleCap)) {
 				clickedVertexIndex = i; // Store the index of the clicked vertex
 				guiEvent.Use(); // Consume the event so it doesn't propagate further
+			}
+
+			if (isSelected) {
+				Vector3 handlePosition = Handles.PositionHandle(worldX, Quaternion.identity);
+
+				if (handlePosition != worldX) {
+					Vector3 worldDelta = handlePosition - worldX;
+
+					for (int j = 0; j < cloth.selectedVertices.Count; j++) {
+						Vector3 newPos = cloth.x[cloth.selectedVertices[j]] + cloth.transform.InverseTransformVector(worldDelta);
+
+						cloth.x[cloth.selectedVertices[j]] = newPos;
+						if (cloth.isDoubleSided) cloth.x[cloth.selectedVertices[j] + cloth.numOneSidedVerts] = newPos;
+
+						int modifiedListIndex = -1;
+						for (int k = 0; k < cloth.modifiedVertices.Count; k++) {
+							if (cloth.selectedVertices[j] == cloth.modifiedVertices[k].index) {
+								modifiedListIndex = k;
+								break;
+							}
+						}
+
+						if (modifiedListIndex > -1) {
+							cloth.modifiedVertices[modifiedListIndex] = new IndexAndVector3(cloth.selectedVertices[j], newPos);
+						} else {
+							cloth.modifiedVertices.Add(new IndexAndVector3(cloth.selectedVertices[j], newPos));
+						}
+					}
+					
+
+					cloth.meshFilter.sharedMesh.vertices = cloth.x;
+					cloth.meshFilter.sharedMesh.RecalculateBounds();
+					cloth.meshFilter.sharedMesh.RecalculateNormals();
+
+					EditorUtility.SetDirty(cloth);
+					SceneView.RepaintAll();
+				}
 			}
 		}
 
@@ -248,8 +325,16 @@ public class ClothEditor : Editor {
 			foreach (int index in cloth.selectedVertices) {
 				if (index >= 0 && index < cloth.x.Length) {
 					Vector3 worldVertex = cloth.transform.TransformPoint(cloth.x[index]);
-					Handles.DrawWireCube(worldVertex, Vector3.one * cloth.distBetweenHandles * 1.5f);
+					Handles.DrawWireCube(worldVertex, Vector3.one * cloth.distBetweenHandles * 1.6f);
 				}
+			}
+		}
+
+		if (cloth.modifiedVertices != null && cloth.modifiedVertices.Count > 0) {
+			Handles.color = Color.blue;
+			for (int i = 0; i < cloth.modifiedVertices.Count; i++) {
+				Vector3 worldVertex = cloth.transform.TransformPoint(cloth.modifiedVertices[i].vector);
+				Handles.DrawWireCube(worldVertex, Vector3.one * cloth.distBetweenHandles * 1.2f);
 			}
 		}
 	}
