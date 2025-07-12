@@ -54,6 +54,7 @@ StructuredBuffer<AdjacentTriangleIndices> vertexToTriangle;
 StructuredBuffer<float> dragFactor; // 1/2 * density * Area
 StructuredBuffer<float3> pinnedVertPos;
 StructuredBuffer<int> vertToPinned;
+StructuredBuffer<uint> solveBending;
 uint globalSubstep;
 uint numCloths;
 uint numVertices;
@@ -420,7 +421,7 @@ void SolveBendingBatch1(uint3 id : SV_DispatchThreadID)
     uint id2 = bendingIDs[id.x * 2];
     
     uint clothIndex = GetClothIndex(id2);
-    if (globalSubstep >= substeps[clothIndex])
+    if (globalSubstep >= substeps[clothIndex] || solveBending[clothIndex] == 0)
         return;
     
     uint id3 = bendingIDs[id.x * 2 + 1];
@@ -443,8 +444,6 @@ void SolveBendingBatch1(uint3 id : SV_DispatchThreadID)
 
         float C = len - dihedral0[id.x];
         float s = -C / (wT + bendingAlpha[clothIndex]);
-        if (C < 0)
-            s *= 0.2f; // Compressive Force
     
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -462,7 +461,7 @@ void SolveBendingBatch2(uint3 id : SV_DispatchThreadID)
     uint id2 = bendingIDs[id.x * 2];
     
     uint clothIndex = GetClothIndex(id2);
-    if (globalSubstep >= substeps[clothIndex])
+    if (globalSubstep >= substeps[clothIndex] || solveBending[clothIndex] == 0)
         return;
     
     uint id3 = bendingIDs[id.x * 2 + 1];
@@ -485,8 +484,6 @@ void SolveBendingBatch2(uint3 id : SV_DispatchThreadID)
 
         float C = len - dihedral0[id.x];
         float s = -C / (wT + bendingAlpha[clothIndex]);
-        if (C < 0)
-            s *= 0.2f; // Compressive Force
     
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -504,7 +501,7 @@ void SolveBendingBatch3(uint3 id : SV_DispatchThreadID)
     uint id2 = bendingIDs[id.x * 2];
     
     uint clothIndex = GetClothIndex(id2);
-    if (globalSubstep >= substeps[clothIndex])
+    if (globalSubstep >= substeps[clothIndex] || solveBending[clothIndex] == 0)
         return;
     
     uint id3 = bendingIDs[id.x * 2 + 1];
@@ -527,8 +524,6 @@ void SolveBendingBatch3(uint3 id : SV_DispatchThreadID)
 
         float C = len - dihedral0[id.x];
         float s = -C / (wT + bendingAlpha[clothIndex]);
-        if (C < 0)
-            s *= 0.2f; // Compressive Force
     
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -546,7 +541,7 @@ void SolveBendingBatch4(uint3 id : SV_DispatchThreadID)
     uint id2 = bendingIDs[id.x * 2];
     
     uint clothIndex = GetClothIndex(id2);
-    if (globalSubstep >= substeps[clothIndex])
+    if (globalSubstep >= substeps[clothIndex] || solveBending[clothIndex] == 0)
         return;
     
     uint id3 = bendingIDs[id.x * 2 + 1];
@@ -569,8 +564,6 @@ void SolveBendingBatch4(uint3 id : SV_DispatchThreadID)
 
         float C = len - dihedral0[id.x];
         float s = -C / (wT + bendingAlpha[clothIndex]);
-        if (C < 0)
-            s *= 0.2f; // Compressive Force
     
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -588,7 +581,7 @@ void SolveBendingBatch5(uint3 id : SV_DispatchThreadID)
     uint id2 = bendingIDs[id.x * 2];
     
     uint clothIndex = GetClothIndex(id2);
-    if (globalSubstep >= substeps[clothIndex])
+    if (globalSubstep >= substeps[clothIndex] || solveBending[clothIndex] == 0)
         return;
     
     uint id3 = bendingIDs[id.x * 2 + 1];
@@ -611,8 +604,6 @@ void SolveBendingBatch5(uint3 id : SV_DispatchThreadID)
 
         float C = len - dihedral0[id.x];
         float s = -C / (wT + bendingAlpha[clothIndex]);
-        if (C < 0)
-            s *= 0.2f; // Compressive Force
     
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -630,7 +621,7 @@ void SolveBendingBatch6(uint3 id : SV_DispatchThreadID)
     uint id2 = bendingIDs[id.x * 2];
     
     uint clothIndex = GetClothIndex(id2);
-    if (globalSubstep >= substeps[clothIndex])
+    if (globalSubstep >= substeps[clothIndex] || solveBending[clothIndex] == 0)
         return;
     
     uint id3 = bendingIDs[id.x * 2 + 1];
@@ -653,8 +644,6 @@ void SolveBendingBatch6(uint3 id : SV_DispatchThreadID)
 
         float C = len - dihedral0[id.x];
         float s = -C / (wT + bendingAlpha[clothIndex]);
-        if (C < 0)
-            s *= 0.2f; // Compressive Force
     
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;

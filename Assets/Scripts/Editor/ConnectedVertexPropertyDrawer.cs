@@ -45,7 +45,7 @@ public class ConnectedVertexPropertyDrawer : PropertyDrawer
 			vertIndexRect.width = fieldWidth;
 			//EditorGUI.PropertyField(vertIndexRect, vertIndexProp);
 			if (!isSetProp.boolValue) GUI.color = Color.yellow;
-			EditorGUI.LabelField(vertIndexRect, "Vert Index", vertIndexProp.intValue.ToString());
+			EditorGUI.LabelField(vertIndexRect, "Vert Index:", vertIndexProp.intValue.ToString());
 			GUI.color = defaultColor;
 
 			// Draw the Button

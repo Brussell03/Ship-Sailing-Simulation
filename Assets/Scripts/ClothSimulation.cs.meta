@@ -1,2 +1,13 @@
 fileFormatVersion: 2
 guid: 46015c7a1a91d924287d924a0711dd53
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - forceRigidbody: {instanceID: 0}
+  - clothCompute: {fileID: 7200000, guid: d2a4e019d7a2bd2418a53b89e42da52c, type: 3}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

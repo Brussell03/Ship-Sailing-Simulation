@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEditor;
 using System.Linq;
 using log4net.Util;
+using System;
 
 [CustomEditor(typeof(ClothSimulation))]
 public class ClothEditor : Editor {
@@ -11,6 +12,8 @@ public class ClothEditor : Editor {
 
 	private int clickedVertexIndex = -1;
 	private int pinWidth = 1;
+	private int selectedColumn = -1;
+	private int selectedRow = -1;
 	private bool confirmingClear;
 
 	private SerializedProperty numRowsProp;
@@ -48,12 +51,7 @@ public class ClothEditor : Editor {
 				}
 
 				if (GUILayout.Button("Reset Cloth")) {
-					cloth.isInitialized = false;
-					cloth.pinnedVertices.Clear();
-					cloth.modifiedVertices.Clear();
-					cloth.selectedVertices.Clear();
-
-					cloth.Init();
+					cloth.ResetCloth();
 				}
 			}
 			EditorGUILayout.EndHorizontal();
@@ -76,9 +74,12 @@ public class ClothEditor : Editor {
 				EditorGUILayout.BeginHorizontal();
 				{
 					if (GUILayout.Button("Reset Shape")) {
-						cloth.isInitialized = false;
-						cloth.modifiedVertices.Clear();
-						cloth.Init();
+						//cloth.isInitialized = false;
+						for (int k = 0; k < cloth.pinnedVertices.Count; k++) {
+							cloth.pinnedVertices[k] = new IndexAndVector3(cloth.pinnedVertices[k].index, cloth.x[cloth.pinnedVertices[k].index]);
+						}
+						cloth.meshFilter.sharedMesh.vertices = cloth.x.ToArray();
+						//cloth.Init();
 					}
 
 					if (cloth.selectedVertices != null) {
@@ -91,12 +92,21 @@ public class ClothEditor : Editor {
 					if (cloth.selectedVertices != null) {
 						if (GUILayout.Button("Pin/Unpin Selected")) {
 							for (int i = 0; i < cloth.selectedVertices.Count; i++) {
-								if (cloth._pinnedVertices.Contains(cloth.selectedVertices[i])) {
+								bool isPinned = false;
+								int index = 0;
+								for (int k = 0; k < cloth.pinnedVertices.Count; k++) {
+									if (cloth.pinnedVertices[k].index == cloth.selectedVertices[i]) {
+										isPinned = true;
+										index = k;
+										break;
+									}
+								}
+								if (isPinned) {
 									// Unpin Vertices
-									cloth._pinnedVertices.Remove(cloth.selectedVertices[i]);
+									cloth.pinnedVertices.RemoveAt(index);
 								} else {
 									// Pin Vertices
-									cloth._pinnedVertices.Add(cloth.selectedVertices[i]);
+									cloth.pinnedVertices.Add(new IndexAndVector3(cloth.selectedVertices[i], cloth.x[cloth.selectedVertices[i]]));
 								}
 							}
 							EditorUtility.SetDirty(cloth);
@@ -105,30 +115,58 @@ public class ClothEditor : Editor {
 
 					if (cloth.selectedVertices != null) {
 						if (GUILayout.Button("Reset Selected")) {
+							Vector3[] verts = cloth.meshFilter.sharedMesh.vertices;
+
 							for (int i = 0; i < cloth.selectedVertices.Count; i++) {
-								int modifiedListIndex = -1;
-								for (int k = 0; k < cloth.modifiedVertices.Count; k++) {
-									if (cloth.selectedVertices[i] == cloth.modifiedVertices[i].index) {
-										modifiedListIndex = k;
+								for (int k = 0; k < cloth.pinnedVertices.Count; k++) {
+									if (cloth.selectedVertices[i] == cloth.pinnedVertices[k].index) {
+										cloth.pinnedVertices[k] = new IndexAndVector3(cloth.selectedVertices[i], cloth.x[cloth.selectedVertices[i]]);
+										verts[cloth.selectedVertices[i]] = cloth.x[cloth.selectedVertices[i]];
+										
+										if (cloth.isDoubleSided) {
+											verts[cloth.selectedVertices[i] + cloth.numOneSidedVerts] = cloth.x[cloth.selectedVertices[i]];
+										}
 										break;
 									}
 								}
-
-								if (modifiedListIndex > -1) {
-									// Reset Vertices
-									cloth.modifiedVertices.RemoveAt(modifiedListIndex);
-								}
 							}
+
+							cloth.meshFilter.sharedMesh.vertices = verts;
+
 							EditorUtility.SetDirty(cloth);
 						}
 					}
 				}
 				EditorGUILayout.EndHorizontal();
 
-			}
+				EditorGUILayout.BeginHorizontal();
+				{
+					EditorGUILayout.BeginVertical();
+					{
+						EditorGUILayout.LabelField("Row:", GUILayout.Width(60));
+						selectedRow = Mathf.Clamp(EditorGUILayout.IntField(selectedRow, GUILayout.Width(40)), 0, cloth.maxNumRows);
 
-			EditorGUILayout.Space();
-			EditorGUILayout.LabelField($"Modified Vertices: {cloth.modifiedVertices.Count}", EditorStyles.miniBoldLabel);
+						EditorGUILayout.LabelField("Column:", GUILayout.Width(60));
+						selectedColumn = Mathf.Clamp(EditorGUILayout.IntField(selectedColumn, GUILayout.Width(40)), 0, cloth.maxNumColumns);
+					}
+					EditorGUILayout.EndVertical();
+
+					EditorGUILayout.BeginVertical();
+					{
+						if (GUILayout.Button("Select Row", GUILayout.MinWidth(100))) {
+							cloth.SelectRow(selectedRow);
+							EditorUtility.SetDirty(cloth);
+						}
+
+						if (GUILayout.Button("Select Column", GUILayout.MinWidth(100))) {
+							cloth.SelectColumn(selectedColumn);
+							EditorUtility.SetDirty(cloth);
+						}
+					}
+					EditorGUILayout.EndVertical();
+				}
+				EditorGUILayout.EndHorizontal();
+			}
 
 			EditorGUILayout.Space();
 			EditorGUILayout.LabelField("Quick Pinning Options", EditorStyles.miniBoldLabel);
@@ -139,9 +177,9 @@ public class ClothEditor : Editor {
 			EditorGUILayout.BeginHorizontal(GUI.skin.window);
 			{
 				EditorGUILayout.LabelField("Dim X:", GUILayout.Width(40));
-				cloth.cornerPinDimX = Mathf.Clamp(EditorGUILayout.IntField(cloth.cornerPinDimX, GUILayout.Width(40)), 1, cloth.numColumns / 2 + 1);
+				cloth.cornerPinDimX = Mathf.Clamp(EditorGUILayout.IntField(cloth.cornerPinDimX, GUILayout.Width(40)), 1, cloth.maxNumColumns / 2 + 1);
 				EditorGUILayout.LabelField("Dim Y:", GUILayout.Width(40));
-				cloth.cornerPinDimY = Mathf.Clamp(EditorGUILayout.IntField(cloth.cornerPinDimY, GUILayout.Width(40)), 1, cloth.numRows / 2 + 1);
+				cloth.cornerPinDimY = Mathf.Clamp(EditorGUILayout.IntField(cloth.cornerPinDimY, GUILayout.Width(40)), 1, cloth.maxNumRows / 2 + 1);
 				if (GUILayout.Button("Pin Corners", GUILayout.MinWidth(100))) {
 					cloth.PinCorners();
 					EditorUtility.SetDirty(cloth);
@@ -159,7 +197,7 @@ public class ClothEditor : Editor {
 					EditorGUILayout.BeginHorizontal();
 					{
 						EditorGUILayout.LabelField("Edge Pin Width:", GUILayout.Width(100));
-						pinWidth = Mathf.Clamp(EditorGUILayout.IntField(pinWidth, GUILayout.Width(40)), 1, cloth.numRows + 1);
+						pinWidth = Mathf.Clamp(EditorGUILayout.IntField(pinWidth, GUILayout.Width(40)), 1, cloth.maxNumRows + 1);
 					}
 					EditorGUILayout.EndHorizontal();
 
@@ -196,17 +234,17 @@ public class ClothEditor : Editor {
 			}
 			EditorGUILayout.EndHorizontal();
 
-			if (cloth._pinnedVertices != null && cloth._pinnedVertices.Count > 0) {
+			if (cloth.pinnedVertices != null && cloth.pinnedVertices.Count > 0) {
 				EditorGUILayout.Space();
 				EditorGUILayout.BeginHorizontal();
 				{
 					if (confirmingClear) {
 						GUI.backgroundColor = Color.red;
 					}
-					EditorGUILayout.LabelField($"Pinned Vertices: {cloth._pinnedVertices.Count}", EditorStyles.miniBoldLabel);
+					EditorGUILayout.LabelField($"Pinned Vertices: {cloth.pinnedVertices.Count}", EditorStyles.miniBoldLabel);
 					if (GUILayout.Button(confirmingClear ? "Confirm?" : "Clear Pinned")) {
 						if (confirmingClear) {
-							cloth._pinnedVertices.Clear();
+							cloth.pinnedVertices.Clear();
 							confirmingClear = false;
 						} else {
 							confirmingClear = true;
@@ -235,9 +273,12 @@ public class ClothEditor : Editor {
 
 		Event guiEvent = Event.current;
 
+		Vector3[] verts = cloth.meshFilter.sharedMesh.vertices;
+		Vector3 worldX;
+
 		for (int i = 0; i < cloth.x.Length / 2; i++) {
-			Vector3 worldX = cloth.transform.TransformPoint(cloth.x[i]);
-			float handleSize = HandleUtility.GetHandleSize(worldX) * 0.4f;
+			worldX = cloth.transform.TransformPoint(verts[i]);
+			float handleSize = HandleUtility.GetHandleSize(worldX) * 0.3f;
 
 			if (handleSize > cloth.distBetweenHandles) {
 				handleSize = cloth.distBetweenHandles;
@@ -250,7 +291,13 @@ public class ClothEditor : Editor {
 					break;
 				}
 			}
-			Handles.color = cloth.pinnedVertices.Contains(i) ? Color.red : Handles.color;
+
+			for (int k = 0; k < cloth.pinnedVertices.Count; k++) {
+				if (cloth.pinnedVertices[k].index == i) {
+					Handles.color = Color.red;
+					break;
+				}
+			}
 
 			bool isSelected = cloth.selectedVertices.Contains(i);
 
@@ -265,29 +312,29 @@ public class ClothEditor : Editor {
 				if (handlePosition != worldX) {
 					Vector3 worldDelta = handlePosition - worldX;
 
-					for (int j = 0; j < cloth.selectedVertices.Count; j++) {
-						Vector3 newPos = cloth.x[cloth.selectedVertices[j]] + cloth.transform.InverseTransformVector(worldDelta);
 
-						cloth.x[cloth.selectedVertices[j]] = newPos;
-						if (cloth.isDoubleSided) cloth.x[cloth.selectedVertices[j] + cloth.numOneSidedVerts] = newPos;
+					for (int j = 0; j < cloth.selectedVertices.Count; j++) {
+						Vector3 newPos = verts[cloth.selectedVertices[j]] + cloth.transform.InverseTransformVector(worldDelta);
+
+						verts[cloth.selectedVertices[j]] = newPos;
+						if (cloth.isDoubleSided) verts[cloth.selectedVertices[j] + cloth.numOneSidedVerts] = newPos;
 
 						int modifiedListIndex = -1;
-						for (int k = 0; k < cloth.modifiedVertices.Count; k++) {
-							if (cloth.selectedVertices[j] == cloth.modifiedVertices[k].index) {
+						for (int k = 0; k < cloth.pinnedVertices.Count; k++) {
+							if (cloth.selectedVertices[j] == cloth.pinnedVertices[k].index) {
 								modifiedListIndex = k;
 								break;
 							}
 						}
 
 						if (modifiedListIndex > -1) {
-							cloth.modifiedVertices[modifiedListIndex] = new IndexAndVector3(cloth.selectedVertices[j], newPos);
+							cloth.pinnedVertices[modifiedListIndex] = new IndexAndVector3(cloth.selectedVertices[j], newPos);
 						} else {
-							cloth.modifiedVertices.Add(new IndexAndVector3(cloth.selectedVertices[j], newPos));
+							cloth.pinnedVertices.Add(new IndexAndVector3(cloth.selectedVertices[j], newPos));
 						}
 					}
-					
 
-					cloth.meshFilter.sharedMesh.vertices = cloth.x;
+					cloth.meshFilter.sharedMesh.vertices = verts;
 					cloth.meshFilter.sharedMesh.RecalculateBounds();
 					cloth.meshFilter.sharedMesh.RecalculateNormals();
 
@@ -317,24 +364,26 @@ public class ClothEditor : Editor {
 			}
 			EditorUtility.SetDirty(cloth); // Mark dirty to save selection state
 										   //Repaint(); // Repaint Inspector to update if needed
-			SceneView.RepaintAll(); // Force Scene View to redraw with new selection
+			//SceneView.RepaintAll(); // Force Scene View to redraw with new selection
 		}
 
 		if (cloth.selectedVertices != null && cloth.selectedVertices.Count > 0) {
 			Handles.color = Color.magenta;
 			foreach (int index in cloth.selectedVertices) {
 				if (index >= 0 && index < cloth.x.Length) {
-					Vector3 worldVertex = cloth.transform.TransformPoint(cloth.x[index]);
+					Vector3 worldVertex = cloth.transform.TransformPoint(cloth.meshFilter.sharedMesh.vertices[index]);
 					Handles.DrawWireCube(worldVertex, Vector3.one * cloth.distBetweenHandles * 1.6f);
 				}
 			}
 		}
 
-		if (cloth.modifiedVertices != null && cloth.modifiedVertices.Count > 0) {
+		if (cloth.pinnedVertices != null && cloth.pinnedVertices.Count > 0) {
 			Handles.color = Color.blue;
-			for (int i = 0; i < cloth.modifiedVertices.Count; i++) {
-				Vector3 worldVertex = cloth.transform.TransformPoint(cloth.modifiedVertices[i].vector);
-				Handles.DrawWireCube(worldVertex, Vector3.one * cloth.distBetweenHandles * 1.2f);
+			for (int i = 0; i < cloth.pinnedVertices.Count; i++) {
+				if (cloth.pinnedVertices[i].vector != cloth.x[cloth.pinnedVertices[i].index]) {
+					Vector3 worldVertex = cloth.transform.TransformPoint(cloth.pinnedVertices[i].vector);
+					Handles.DrawWireCube(worldVertex, Vector3.one * cloth.distBetweenHandles * 1.2f);
+				}
 			}
 		}
 	}
