@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Unity.Burst;
 using Unity.Collections;
@@ -10,78 +9,20 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.VisualScripting;
-using UnityEditor.Experimental.GraphView;
 using UnityEngine;
-using static UnityEditor.PlayerSettings;
-using static UnityEngine.InputManagerEntry;
 
-[RequireComponent(typeof(MeshFilter)), RequireComponent(typeof(MeshRenderer)), RequireComponent(typeof(Rigidbody)), RequireComponent(typeof(Collider)), ExecuteAlways]
+[RequireComponent(typeof(MeshFilter)), RequireComponent(typeof(MeshRenderer)), RequireComponent(typeof(BoxCollider)), ExecuteAlways]
 public class ClothSimulation : MonoBehaviour
 {
+	[Header("Simulation Settings")]
 	[Range(0, 0.0001f)] public float stretchingCompliance = 0f;
 	[Range(0, 10)] public float bendingCompliance = 0f;
-	[Min(0.0000001f)] public float density = 100f; // kg / m^2
 	[Range(3, 30)] public int substeps = 5;
-	[Min(0.0000001f)] public float thickness = 0.001f; // m
+	[Range(0, 1)] public float damping = 0.03f;
 	[Min(0.0000001f)] public float wScale = 1f;
-	public bool handleCollisions = true;
 	public bool simulateGravity = true;
 	public bool simulateWind = true;
-	[SerializeField] private bool _applyGravity = true;
-	public bool applyGravity {
-		get { return _applyGravity; }
-		set {
-			if (_applyGravity != value) {
-				_applyGravity = value;
-
-				Debug.Log($"isSimulating changed to: {_applyGravity}");
-				if (personalRb != null) personalRb.useGravity = value;
-
-#if UNITY_EDITOR
-				UnityEditor.EditorUtility.SetDirty(this);
-#endif
-			}
-		}
-	}
-	public bool applyWind = true;
 	public bool solveBending = true;
-	[Tooltip("What rigidbody the force is applied to.")] public Rigidbody forceRigidbody;
-
-	//public float width = 10f;
-	[Min(0.0000001f)] public float topWidth = 10f;
-	[Min(0.0000001f)] public float bottomWidth = 10f;
-	public float topCenter = 5f;
-	public float bottomCenter = 5f;
-	//public float height = 10f;
-	[Min(0.0000001f)] public float leftHeight = 10f;
-	[Min(0.0000001f)] public float rightHeight = 10f;
-	public float leftCenter = 5f;
-	public float rightCenter = 5f;
-	[Min(2)] public int baseNumRows = 15;
-	[Min(2)] public int baseNumColumns = 15;
-	public ComputeShader clothCompute;
-	[Range(0, 1)] public float damping = 0.03f;
-	public Vector2 textureSize = Vector2.one;
-	public Vector2 textureOffset = Vector2.zero;
-	[Range(0, 360)] public float textureRotation = 0;
-	[SerializeField] private ClothTexture _clothTexture;
-	public ClothTexture clothTexture {
-		get { return _clothTexture; }
-		set {
-			if (_clothTexture != value) {
-				_clothTexture = value;
-
-				Debug.Log($"clothTexture changed to: {_clothTexture}");
-				if (dispatcher != null) dispatcher.refreshRenderingQueued = true;
-#if UNITY_EDITOR
-				UnityEditor.EditorUtility.SetDirty(this);
-#endif
-			}
-		}
-	}
-	public TextureSide textureSide = TextureSide.Both;
-	public Vector2 compression = Vector2.zero;
-	public bool isDoubleSided = true;
 	[SerializeField] private bool _isSimulating = true;
 	public bool isSimulating {
 		get { return _isSimulating; }
@@ -114,13 +55,65 @@ public class ClothSimulation : MonoBehaviour
 			}
 		}
 	}
+
+	[Header("Cloth Properties")]
+	public ClothMaterial clothMaterial;
+	[Min(0.0000001f)] public float thickness = 0.001f; // m
+	public Vector2 compression = Vector2.zero;
+	[Tooltip("Effects how much bending constraints can be tightened.")]
+	[Range(0, 1)] public float wrinkliness = 0f;
+	[Tooltip("Effects how much vertices are scrambled away from their grid position.")]
+	[Range(0, 1)] public float randomness = 0.5f;
+	[Tooltip("Vertex randomness seed.")]
+	[SerializeField] private int seed;
+	[Tooltip("What rigidbody the force is applied to.")] public Rigidbody forceRigidbody;
+	public bool isDoubleSided = true;
+	public bool applyGravity = true;
+	public bool applyWind = true;
+
+	[Header("Shape Settings")]
+	public bool liveEdit = false;
+	public ClothShape clothShape = ClothShape.Quadrilateral;
+	[Min(2)] public int baseNumRows = 15;
+	[Min(2)] public int baseNumColumns = 15;
+	[Min(0.0000001f)] public float topWidth = 10f;
+	[Min(0.0000001f)] public float bottomWidth = 10f;
+	[Min(0.0000001f)] public float leftHeight = 10f;
+	[Min(0.0000001f)] public float rightHeight = 10f;
+	public float topCenter = 0f;
+	public float bottomCenter = 0f;
+	public float leftCenter = 0f;
+	public float rightCenter = 0f;
+
+	[Header("Texture Settings")]
+	[SerializeField] private ClothTexture _clothTexture;
+	public ClothTexture clothTexture {
+		get { return _clothTexture; }
+		set {
+			if (_clothTexture != value) {
+				_clothTexture = value;
+
+				Debug.Log($"clothTexture changed to: {_clothTexture}");
+				if (dispatcher != null) dispatcher.refreshRenderingQueued = true;
+#if UNITY_EDITOR
+				UnityEditor.EditorUtility.SetDirty(this);
+#endif
+			}
+		}
+	}
+	public TextureSide textureSide = TextureSide.Both;
+	public Vector2 textureSize = Vector2.one;
+	public Vector2 textureOffset = Vector2.zero;
+	[Range(0, 360)] public float textureRotation = 0;
+
+	[Header("Pin Cutting")]
 	[Tooltip("Can pinned vertices be cut.")]
 	public bool cuttablePins = false;
 	[Tooltip("Momentum required to cut pins.")]
 	public float minCuttingMomentum = 10;
-	public bool liveEdit = false;
-	public int activeLODIndex = 0;
+	[SerializeField] public List<string> collisionTags = new List<string>();
 
+	// Simulation and Mesh Data
 	public NativeArray<Vector3> x;
 	public NativeArray<Vector3> v;
 	public NativeArray<Vector3> normals;
@@ -134,61 +127,68 @@ public class ClothSimulation : MonoBehaviour
 	private int[] neighbors;
 	public int[][] stretchingIDs { get; set; }
 	public float[] dragFactor { get; set; }
+
+	// Booleans
 	public bool isInitialized { get; set; } = false;
-
-	public MeshFilter meshFilter { get; set; }
-	public MeshRenderer meshRenderer { get; private set; }
-	[HideInInspector] public List<int>[] vertexToTriangles { get; private set; }
-	[HideInInspector, SerializeField] private List<IndexAndVector3> _pinnedVertices = new List<IndexAndVector3>();
-	public List<IndexAndVector3> pinnedVertices => _pinnedVertices; // Read-only reference variable to _pinnedVertices
-	public List<Vector3> pinnedVertLocalPos { get; private set; } = new List<Vector3>();
-	private List<float> pinnedVertInvMass = new List<float>();
-	[HideInInspector] public List<int> selectedVertices = new List<int>();
-	private BoxCollider collider;
-	private Hash pinnedVerticesHash;
-	public ClothDispatcher dispatcher { get; private set; }
-	public bool showShapingGizmos { get; set; } = false;
-
-	public bool drawGraphColoring = false;
-	public float distBetweenHandles { get; private set; }
-	public bool isShowingVerts { get; set; } = false;
-	public int cornerPinDimX { get; set; } = 1;
-	public int cornerPinDimY { get; set; } = 1;
-	public int numOneSidedVerts { get; private set; }
-	public int numOneSidedTriangles { get; private set; }
 	public bool isActive { get; private set; }
-	public Vector3 positionOnReadback { get; set; }
-	public Vector3 windForce { get; set; }
-	public Rigidbody personalRb { get; private set; }
-	public Texture2D alphaMap { get; private set; }
-	private float hashSpacing = 1f;
-	private Vector3 pinnedCenter;
-	[SerializeField] public List<ClothLOD> LODs = new List<ClothLOD>();
-	[SerializeField] public List<ConnectedVertex> connectedVertices = new List<ConnectedVertex>();
-	private int numRowsOnInit;
-	private int numColumnsOnInit;
+	public bool showShapingGizmos { get; set; } = false;
+	public bool isChangingLOD { get; set; } = false;
+	public bool readbackComplete { get; set; } = false;
+
+	// Integers
 	public int clothIndex { get; set; }
 	public int maxNumRows { get; private set; }
 	public int maxNumColumns { get; private set; }
 	public int maxSubdivisions { get; private set; }
 	public int maxQualityLODIndex { get; private set; }
+	public int numOneSidedVerts { get; private set; }
+	public int numOneSidedTriangles { get; private set; }
+	public int targetLODIndex { get; set; }
+	public int activeLODIndex { get; private set; }
+	private int cutPinStartIndex = -1;
+	private int numRowsOnInit;
+	private int numColumnsOnInit;
+
+	// Floats
+	public float distBetweenHandles { get; private set; }
+	public float mass { get; private set; }
+	private float hashSpacing = 1f;
+	private float airDensity = 1.287f; // kg/m^3
+
+	// Objects
+	public MeshFilter meshFilter { get; set; }
+	public MeshRenderer meshRenderer { get; private set; }
+	public Texture2D alphaMap { get; private set; }
+	public ClothDispatcher dispatcher { get; private set; }
+	private BoxCollider collider;
+	private Hash pinnedVerticesHash;
+
+	// Vectors
+	public Vector3 positionOnReadback { get; set; }
+	public Vector3 windForce { get; set; }
+	private Vector3 pinnedCenter;
+
+	// Lists
+	[HideInInspector] public List<int>[] vertexToTriangles { get; private set; }
+
+	[HideInInspector, SerializeField] private List<IndexAndVector3> _pinnedVertices = new List<IndexAndVector3>();
+	public List<IndexAndVector3> pinnedVertices => _pinnedVertices; // Read-only reference variable to _pinnedVertices
+	public List<Vector3> pinnedVertLocalPos { get; private set; } = new List<Vector3>();
+	private List<float> pinnedVertInvMass = new List<float>();
+
+	[HideInInspector] public List<int> selectedVertices = new List<int>();
+
+	[SerializeField] public List<ClothLOD> LODs = new List<ClothLOD>();
+
+	[SerializeField] public List<ConnectedVertex> connectedVertices = new List<ConnectedVertex>();
+
+	// Pin Cutting
 	private HashSet<Collider> _currentTriggers = new HashSet<Collider>();
 	List<Vector3> collisionTestPoints = new List<Vector3>();
 	List<int> collisionCutIndices = new List<int>();
-	[SerializeField] public List<string> collisionTags = new List<string>();
-	public bool isChangingLOD { get; set; } = false;
-	public bool readbackComplete { get; set; } = false;
-	private int targetLOD;
 	public List<IndexAndVector3> cutPins = new List<IndexAndVector3>();
-	private int cutPinStartIndex = -1;
-	[SerializeField] private int seed;
 
-	public enum ClothMaterial : int {
-		BeachBall,
-		Foam,
-		Emojis,
-		Wave
-	};
+	public enum ClothMaterial : int { };
 
 	public enum ClothShape {
 		Quadrilateral,
@@ -202,10 +202,6 @@ public class ClothSimulation : MonoBehaviour
 	};
 
 	public enum ClothTexture : int { };
-
-	public ClothMaterial clothMaterial;
-	public ClothShape clothShape = ClothShape.Quadrilateral;
-	private float airDensity = 1.287f; // kg/m^3
 
 	/*private NativeArray<Vector3> partialSums;
 
@@ -234,27 +230,15 @@ public class ClothSimulation : MonoBehaviour
 	}
 
 	[Serializable]
-	public struct TighteningGroup {
-		[Range(0f, 1f)] public float slackness;
-		public int[] vertices;
-		public bool isSet;
-		public Vector3 tighteningDirection;
-
-		public List<Vector3Int> constraintIndices;
-		public List<Vector3> constraintPos;
-		public List<float> originalConstraintLengths;
-
-		public Vector3 minConstraintPos;
-		public Vector3 maxConstraintPos;
-	}
-
-	[Serializable]
 	public struct ClothLOD {
 		[Min(0)] public float maxDistance;
 		[Min(1)] public int subdivisions;
 
 		public int numRows { get; set; }
 		public int numColumns { get; set; }
+		public int detailLevel { get; set; }
+		public int numVertices { get; set; }
+		public float maxDistanceSqr { get; set; }
 		public List<int> pinIndices { get; set; }
 		public List<int> pinListIndices { get; set; }
 	}
@@ -264,21 +248,19 @@ public class ClothSimulation : MonoBehaviour
 	{
 		meshFilter = GetComponent<MeshFilter>();
 		meshRenderer = GetComponent<MeshRenderer>();
-		personalRb = GetComponent<Rigidbody>();
 		collider = GetComponent<BoxCollider>();
 		dispatcher = FindAnyObjectByType<ClothDispatcher>();
 
 		if (dispatcher != null ) {
 			dispatcher.numClothsChanged = true;
-			dispatcher.refreshAllQueued = true;
 		}
 
 		isActive = true;
 		liveEdit = false;
+		targetLODIndex = 0;
+		activeLODIndex = 0;
 
 		InitLODs();
-
-		personalRb.constraints = RigidbodyConstraints.FreezeAll;
 
 		Init();
 
@@ -304,7 +286,7 @@ public class ClothSimulation : MonoBehaviour
 		}
 
 #if UNITY_EDITOR
-		if (drawGraphColoring && LODs[activeLODIndex].numRows <= 40 && LODs[activeLODIndex].numColumns <= 40) {
+		if (false && LODs[activeLODIndex].numRows <= 40 && LODs[activeLODIndex].numColumns <= 40) {
 			for (int i = 0; i < d0.Length; i++) {
 				for (int j = 0; j < d0[i].Length; j++) {
 					int id0 = stretchingIDs[i][j * 2];
@@ -343,30 +325,17 @@ public class ClothSimulation : MonoBehaviour
 	}
 	void Update()
 	{
-		if (cuttablePins && isInitialized && Application.isPlaying && pinnedVertices.Count > 0) {
+		if (!Application.isPlaying) return;
+
+		if (cuttablePins && isInitialized && pinnedVertices.Count > 0) {
 			if (pinnedVerticesHash == null) pinnedVerticesHash = new Hash(hashSpacing, pinnedVertices.Count);
 
 			pinnedVerticesHash.Create(pinnedVertices);
 		}
 
-		if (Input.GetKeyDown(KeyCode.Space) && !isChangingLOD) {
-			if (activeLODIndex - 1 >= 0) {
-				isChangingLOD = true;
-				dispatcher.refreshAllQueued = true;
-				targetLOD = activeLODIndex - 1;
-			}
-		}
-		if (Input.GetKeyDown(KeyCode.Return) && !isChangingLOD) {
-			if (activeLODIndex + 1 <= maxQualityLODIndex) {
-				isChangingLOD = true;
-				dispatcher.refreshAllQueued = true;
-				targetLOD = activeLODIndex + 1;
-			}
-		}
-
 		if (readbackComplete) {
 			readbackComplete = false;
-			ChangeLOD(targetLOD);
+			ChangeLOD(targetLODIndex);
 		}
 	}
 
@@ -396,9 +365,21 @@ public class ClothSimulation : MonoBehaviour
 
 		//Debug.Log("Total Wind Force: " + windForce);
 
-		if (applyWind && pinnedVertices != null && pinnedVertices.Count > 0 && forceRigidbody != null) {
-			forceRigidbody.AddForceAtPosition(windForce, pinnedCenter);
+		if (forceRigidbody != null) {
+			if (applyWind && pinnedVertices != null && pinnedVertices.Count > 0 && applyGravity) {
+				forceRigidbody.AddForceAtPosition(windForce + mass * Physics.gravity, pinnedCenter);
+
+			} else {
+				if (applyGravity) {
+					forceRigidbody.AddForceAtPosition(mass * Physics.gravity, pinnedCenter);
+
+				}
+				if (applyWind && pinnedVertices != null && pinnedVertices.Count > 0) {
+					forceRigidbody.AddForceAtPosition(windForce, pinnedCenter);
+				}
+			}
 		}
+		
 	}
 
 	private void LateUpdate() {
@@ -490,47 +471,46 @@ public class ClothSimulation : MonoBehaviour
 		if (textureUV.IsCreated) textureUV.Dispose();
 
 		positionOnReadback = transform.position;
-		int lodIndex = Application.isPlaying ? activeLODIndex : maxQualityLODIndex;
 
 		switch (clothShape) {
 			case ClothShape.Trapezoidal:
-				InitTrapezoidal(LODs[lodIndex]);
+				InitTrapezoidal(LODs[activeLODIndex]);
 				break;
 
 			default:
-				InitQuad(LODs[lodIndex]);
+				InitQuad(LODs[activeLODIndex]);
 				break;
 		}
 
 		float maxWidth = Mathf.Max(topWidth, bottomWidth);
 		float maxHeight = Mathf.Max(leftHeight, rightHeight);
 
-		distBetweenHandles = (maxWidth > maxHeight ? maxHeight : maxWidth) / (LODs[lodIndex].numColumns + LODs[lodIndex].numRows);
-		hashSpacing = (maxWidth > maxHeight ? maxWidth : maxHeight) * 2f / (LODs[lodIndex].numColumns + LODs[lodIndex].numRows);
+		distBetweenHandles = (maxWidth > maxHeight ? maxHeight : maxWidth) / (LODs[activeLODIndex].numColumns + LODs[activeLODIndex].numRows);
+		hashSpacing = (maxWidth > maxHeight ? maxWidth : maxHeight) * 2f / (LODs[activeLODIndex].numColumns + LODs[activeLODIndex].numRows);
 
-		personalRb.useGravity = applyGravity;
+		if (Application.isPlaying) {
 
-		for (int i = 0; i < LODs[lodIndex].pinIndices.Count; i++) {
+			for (int i = 0; i < LODs[activeLODIndex].pinIndices.Count; i++) {
+				x[LODs[activeLODIndex].pinIndices[i]] = transform.TransformPoint(pinnedVertices[LODs[activeLODIndex].pinListIndices[i]].vector);
+			}
 
-			if (!Application.isPlaying && isDoubleSided) {
-				x[LODs[lodIndex].pinIndices[i]] = pinnedVertices[LODs[lodIndex].pinListIndices[i]].vector;
+		} else {
+
+			Vector3[] xWithPins = x.ToArray();
+			for (int i = 0; i < LODs[activeLODIndex].pinIndices.Count; i++) {
+
+				xWithPins[LODs[activeLODIndex].pinIndices[i]] = pinnedVertices[LODs[activeLODIndex].pinListIndices[i]].vector;
 
 				if (isDoubleSided) {
-					x[LODs[lodIndex].pinIndices[i] + numOneSidedVerts] = pinnedVertices[LODs[lodIndex].pinListIndices[i]].vector;
+					xWithPins[LODs[activeLODIndex].pinIndices[i] + numOneSidedVerts] = pinnedVertices[LODs[activeLODIndex].pinListIndices[i]].vector;
 				}
-
-			} else if (Application.isPlaying) {
-				x[LODs[lodIndex].pinIndices[i]] = transform.TransformPoint(pinnedVertices[LODs[lodIndex].pinListIndices[i]].vector);
 			}
-		}
 
-#if UNITY_EDITOR
-		if (!Application.isPlaying) {
-			numRowsOnInit = LODs[lodIndex].numRows;
-			numColumnsOnInit = LODs[lodIndex].numColumns;
+			numRowsOnInit = LODs[activeLODIndex].numRows;
+			numColumnsOnInit = LODs[activeLODIndex].numColumns;
 
 			Mesh mesh = new Mesh();
-			mesh.vertices = x.ToArray();
+			mesh.vertices = xWithPins;
 			mesh.uv = uv.ToArray();
 			mesh.uv2 = textureUV.ToArray();
 
@@ -555,10 +535,8 @@ public class ClothSimulation : MonoBehaviour
 
 			meshFilter.sharedMesh = mesh;
 		}
-#endif
 
 		isInitialized = true;
-		dispatcher.refreshAllQueued = true;
 	}
 
 	private void InitQuad(ClothLOD lod) {
@@ -622,14 +600,14 @@ public class ClothSimulation : MonoBehaviour
 					uv[numOneSidedVerts + index] = new Vector2(xPos, yPos);
 				}
 
-				if (j > 0 && j < numColumns && i > 0 && i < numRows) {
+				if (randomness > 0 && j > 0 && j < numColumns && i > 0 && i < numRows && !lod.pinIndices.Contains(index)) {
 					float semiAxisB = colHeight / (numRows * 2f);
 
-					int perVertexSeed = seed + index;
+					int perVertexSeed = seed + index * (int)Mathf.Pow(2, maxSubdivisions) / (int)Mathf.Pow(2, lod.subdivisions);
 					System.Random rand = new System.Random(perVertexSeed);
 
 					float randAngle = (float)rand.NextDouble() * 2f * Mathf.PI;
-					float randDist = (float)rand.NextDouble() * 0.5f;
+					float randDist = (float)rand.NextDouble() * 0.6f * randomness;
 					Vector3 adjustment = new Vector3(semiAxisA * Mathf.Cos(randAngle), semiAxisB * Mathf.Sin(randAngle), 0) * randDist;
 
 					x[index] += adjustment;
@@ -742,13 +720,13 @@ public class ClothSimulation : MonoBehaviour
 					}
 
 					cellArea *= (1f + compression.x) * (1f + compression.y);
-					w[index] = wScale / (density * thickness * cellArea);
+					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * thickness * cellArea);
 					dragFactor[index] = 0.5f * cellArea * airDensity;
 					totalArea += cellArea;
 				}
 			}
 
-			personalRb.mass = totalArea * thickness * density;
+			mass = totalArea * thickness * dispatcher.materials[(int)clothMaterial].surfaceDensity;
 
 			for (int i = 0; i < lod.pinIndices.Count; i++) {
 				pinnedVertInvMass.Add(w[lod.pinIndices[i]]);
@@ -830,14 +808,14 @@ public class ClothSimulation : MonoBehaviour
 						uv[numOneSidedVerts + ind] = new Vector2(xPos, yPos);
 					}
 
-					if (j > minSubdivision - i && j < numColumns && i > 0 && i < numRows) {
+					if (randomness > 0 && j > minSubdivision - i && j < numColumns && i > 0 && i < numRows && !lod.pinIndices.Contains(ind)) {
 						float semiAxisB = colHeight / (numRows * 2f);
 
-						int perVertexSeed = seed + ind;
+						int perVertexSeed = seed + ind * (int)Mathf.Pow(2, maxSubdivisions) / (int)Mathf.Pow(2, lod.subdivisions);
 						System.Random rand = new System.Random(perVertexSeed);
 
 						float randAngle = (float)rand.NextDouble() * 2f * Mathf.PI;
-						float randDist = (float)rand.NextDouble() * 0.5f;
+						float randDist = (float)rand.NextDouble() * 0.6f * randomness;
 						Vector3 adjustment = new Vector3(semiAxisA * Mathf.Cos(randAngle), semiAxisB * Mathf.Sin(randAngle), 0) * randDist;
 
 						x[ind] += adjustment;
@@ -989,14 +967,14 @@ public class ClothSimulation : MonoBehaviour
 					}
 
 					cellArea *= (1f + compression.x) * (1f + compression.y);
-					w[ind] = wScale / (density * thickness * cellArea);
+					w[ind] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * thickness * cellArea);
 					dragFactor[ind++] = 0.5f * cellArea * airDensity;
 					totalArea += cellArea;
 
 				}
 			}
 
-			personalRb.mass = totalArea * thickness * density;
+			mass = totalArea * thickness * dispatcher.materials[(int)clothMaterial].surfaceDensity;
 
 			for (int i = 0; i < lod.pinIndices.Count; i++) {
 				pinnedVertInvMass.Add(w[lod.pinIndices[i]]);
@@ -1368,6 +1346,7 @@ public class ClothSimulation : MonoBehaviour
 			}
 		}
 
+		int index = 0;
 		dihedral0 = new float[bendingIDs.Length][];
 		for (int i = 0; i < dihedral0.Length; i++) {
 			dihedral0[i] = new float[bendingIDs[i].Length / 2];
@@ -1377,7 +1356,12 @@ public class ClothSimulation : MonoBehaviour
 
 				float constraintLength = (new Vector3((pos[id0] - pos[id1]).x * (1 + compression.x), (pos[id0] - pos[id1]).y * (1 + compression.y), 0)).magnitude;
 
-				dihedral0[i][j] = constraintLength;
+				System.Random rand = new System.Random(seed + index);
+				index++;
+
+				float wrinklinessFactor = Mathf.Lerp(1f, (float)rand.NextDouble() * 0.05f + 0.95f, wrinkliness);
+
+				dihedral0[i][j] = constraintLength * wrinklinessFactor;
 			}
 		}
 	}
@@ -1737,6 +1721,7 @@ public class ClothSimulation : MonoBehaviour
 			}
 		}
 
+		int index = 0;
 		dihedral0 = new float[bendingIDs.Length][];
 		for (int i = 0; i < dihedral0.Length; i++) {
 			dihedral0[i] = new float[bendingIDs[i].Length / 2];
@@ -1746,7 +1731,12 @@ public class ClothSimulation : MonoBehaviour
 
 				float constraintLength = (new Vector3((pos[id0] - pos[id1]).x * (1 + compression.x), (pos[id0] - pos[id1]).y * (1 + compression.y), 0)).magnitude;
 
-				dihedral0[i][j] = constraintLength;
+				System.Random rand = new System.Random(seed + index);
+				index++;
+
+				float wrinklinessFactor = Mathf.Lerp(1f, (float)rand.NextDouble() * 0.05f + 0.95f, wrinkliness);
+
+				dihedral0[i][j] = constraintLength * wrinklinessFactor;
 			}
 		}
 	}
@@ -1795,8 +1785,6 @@ public class ClothSimulation : MonoBehaviour
 	public async void ChangeLOD(int lodIndex) {
 		if (lodIndex == activeLODIndex) return;
 
-		Debug.Log("Changing LOD");
-
 		pinnedVertInvMass.Clear();
 		pinnedVertLocalPos.Clear();
 
@@ -1806,11 +1794,14 @@ public class ClothSimulation : MonoBehaviour
 			await Task.Run(() => DecreaseLOD(lodIndex));
 		}
 
-		//dispatcher.refreshAllQueued = true;
 		isChangingLOD = false;
 	}
 
 	private void IncreaseLOD(int lodIndex) {
+		if (lodIndex > LODs.Count - 1) lodIndex = LODs.Count - 1;
+
+		UpdatePinnedVerticesOnLOD(lodIndex);
+
 		ClothLOD lod = LODs[lodIndex];
 
 		int numRows = lod.numRows;
@@ -1867,6 +1858,8 @@ public class ClothSimulation : MonoBehaviour
 			float rowWidth = (bottomWidth - topWidth) / numRows * i + topWidth;
 			float rowOffset = Mathf.Lerp(topCenter - topWidth / 2f, bottomCenter - bottomWidth / 2f, (float)i / numRows);
 
+			float semiAxisA = rowWidth / (numColumns * 2f);
+
 			for (int j = 0; j < numColumns + 1; j++) {
 
 				float colHeight = (rightHeight - leftHeight) / numColumns * j + leftHeight;
@@ -1874,6 +1867,20 @@ public class ClothSimulation : MonoBehaviour
 
 				float xPos = (j * rowWidth) / numColumns + rowOffset;
 				float yPos = colHeight - (i * colHeight) / numRows + colOffset;
+
+				if (randomness > 0 && j > (clothShape == ClothShape.Trapezoidal ? minSubdivision - i : 0) && j < numColumns && i > 0 && i < numRows && !lod.pinIndices.Contains(index)) {
+					float semiAxisB = colHeight / (numRows * 2f);
+
+					int perVertexSeed = seed + index * (int)Mathf.Pow(2, maxSubdivisions) / (int)Mathf.Pow(2, lod.subdivisions);
+					System.Random rand = new System.Random(perVertexSeed);
+
+					float randAngle = (float)rand.NextDouble() * 2f * Mathf.PI;
+					float randDist = (float)rand.NextDouble() * 0.6f * randomness;
+					Vector3 adjustment = new Vector3(semiAxisA * Mathf.Cos(randAngle), semiAxisB * Mathf.Sin(randAngle), 0) * randDist;
+
+					xPos += adjustment.x;
+					yPos += adjustment.y;
+				}
 
 				//int adjustedJ = j / every;
 				//int adjustedI = i / every;
@@ -2004,7 +2011,7 @@ public class ClothSimulation : MonoBehaviour
 							int id2 = adjustedIndex + numOnNextRow;
 							int id3 = id2 + 1;
 
-							if (j == minSubdivision - i) {
+							if (j <= minSubdivision - i + every) {
 
 								newX[index] = Vector3.Lerp(Vector3.Lerp(x[id2] + (x[id1] - x[id3]), x[id1], u), Vector3.Lerp(x[id2], x[id3], u), v);
 								newV[index] = Vector3.Lerp(Vector3.Lerp(this.v[id2] + (this.v[id1] - this.v[id3]), this.v[id1], u), Vector3.Lerp(this.v[id2], this.v[id3], u), v);
@@ -2028,6 +2035,7 @@ public class ClothSimulation : MonoBehaviour
 				}
 			}
 		}
+		
 		activeLODIndex = lodIndex;
 
 		if (x.IsCreated) x.Dispose();
@@ -2206,7 +2214,7 @@ public class ClothSimulation : MonoBehaviour
 					}
 
 					cellArea *= (1f + compression.x) * (1f + compression.y);
-					w[index] = wScale / (density * thickness * cellArea);
+					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * thickness * cellArea);
 					dragFactor[index] = 0.5f * cellArea * airDensity;
 					index++;
 				}
@@ -2278,14 +2286,12 @@ public class ClothSimulation : MonoBehaviour
 					}
 
 					cellArea *= (1f + compression.x) * (1f + compression.y);
-					w[index] = wScale / (density * thickness * cellArea);
+					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * thickness * cellArea);
 					dragFactor[index++] = 0.5f * cellArea * airDensity;
 
 				}
 			}
 		}
-
-		UpdatePinnedVerticesOnLOD(lodIndex);
 
 		for (int i = 0; i < lod.pinIndices.Count; i++) {
 			pinnedVertInvMass.Add(w[lod.pinIndices[i]]);
@@ -2306,6 +2312,10 @@ public class ClothSimulation : MonoBehaviour
 	}
 
 	private void DecreaseLOD(int lodIndex) {
+		if (lodIndex < 0) lodIndex = 0;
+
+		UpdatePinnedVerticesOnLOD(lodIndex);
+
 		ClothLOD lod = LODs[lodIndex];
 
 		int numRows = lod.numRows;
@@ -2362,6 +2372,8 @@ public class ClothSimulation : MonoBehaviour
 			float rowWidth = (bottomWidth - topWidth) / numRows * i + topWidth;
 			float rowOffset = Mathf.Lerp(topCenter - topWidth / 2f, bottomCenter - bottomWidth / 2f, (float)i / numRows);
 
+			float semiAxisA = rowWidth / (numColumns * 2f);
+
 			for (int j = 0; j < numColumns + 1; j++) {
 
 				int adjustedIndex = (j + i * (LODs[activeLODIndex].numColumns + 1)) * multiplier;
@@ -2372,6 +2384,19 @@ public class ClothSimulation : MonoBehaviour
 				float xPos = (j * rowWidth) / numColumns + rowOffset;
 				float yPos = colHeight - (i * colHeight) / numRows + colOffset;
 
+				if (randomness > 0 && j > (clothShape == ClothShape.Trapezoidal ? minSubdivision - i : 0) && j < numColumns && i > 0 && i < numRows && !lod.pinIndices.Contains(index)) {
+					float semiAxisB = colHeight / (numRows * 2f);
+
+					int perVertexSeed = seed + index * (int)Mathf.Pow(2, maxSubdivisions) / (int)Mathf.Pow(2, lod.subdivisions);
+					System.Random rand = new System.Random(perVertexSeed);
+
+					float randAngle = (float)rand.NextDouble() * 2f * Mathf.PI;
+					float randDist = (float)rand.NextDouble() * 0.6f * randomness;
+					Vector3 adjustment = new Vector3(semiAxisA * Mathf.Cos(randAngle), semiAxisB * Mathf.Sin(randAngle), 0) * randDist;
+
+					xPos += adjustment.x;
+					yPos += adjustment.y;
+				}
 
 				if (clothShape == ClothShape.Quadrilateral) {
 					newX[index] = x[adjustedIndex];
@@ -2588,7 +2613,7 @@ public class ClothSimulation : MonoBehaviour
 					}
 
 					cellArea *= (1f + compression.x) * (1f + compression.y);
-					w[index] = wScale / (density * thickness * cellArea);
+					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * thickness * cellArea);
 					dragFactor[index] = 0.5f * cellArea * airDensity;
 					index++;
 				}
@@ -2660,15 +2685,12 @@ public class ClothSimulation : MonoBehaviour
 					}
 
 					cellArea *= (1f + compression.x) * (1f + compression.y);
-					w[index] = wScale / (density * thickness * cellArea);
+					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * thickness * cellArea);
 					dragFactor[index++] = 0.5f * cellArea * airDensity;
 
 				}
 			}
 		}
-		
-
-		UpdatePinnedVerticesOnLOD(lodIndex);
 
 		for (int i = 0; i < lod.pinIndices.Count; i++) {
 			pinnedVertInvMass.Add(w[lod.pinIndices[i]]);
@@ -2705,6 +2727,14 @@ public class ClothSimulation : MonoBehaviour
 
 			lod.numRows = baseNumRows * multiplier;
 			lod.numColumns = baseNumColumns * multiplier;
+			lod.detailLevel = lod.numColumns * lod.numRows;
+			lod.maxDistanceSqr = lod.maxDistance * lod.maxDistance;
+
+			lod.numVertices = (lod.numColumns + 1) * (lod.numRows + 1);
+			if (clothShape == ClothShape.Trapezoidal) {
+				int minSubdivision = (int)Mathf.Min(lod.numRows, lod.numColumns);
+				lod.numVertices -= minSubdivision * (minSubdivision + 1) / 2;
+			}
 
 			if (lod.subdivisions > maxSubdivisions) {
 				maxSubdivisions = lod.subdivisions;
@@ -2718,6 +2748,8 @@ public class ClothSimulation : MonoBehaviour
 
 			LODs[i] = lod;
 		}
+
+		if (!Application.isPlaying) activeLODIndex = maxQualityLODIndex;
 
 		UpdatePinnedVerticesOnLOD(activeLODIndex);
 	}
@@ -2871,14 +2903,13 @@ public class ClothSimulation : MonoBehaviour
 	}
 
 	private void OnTriggerStay(Collider other) {
-		if (other.attachedRigidbody.mass * other.attachedRigidbody.velocity.magnitude >= minCuttingMomentum) {
-			for (int i = 0; i < collisionTags.Count; i++) {
-				if (other.CompareTag(collisionTags[i])) {
+		for (int i = 0; i < collisionTags.Count; i++) {
+			if (other.CompareTag(collisionTags[i]) && other.attachedRigidbody != null) {
+				if (other.attachedRigidbody.mass * other.attachedRigidbody.velocity.magnitude >= minCuttingMomentum) {
 					_currentTriggers.Add(other);
 				}
 			}
 		}
-		
 	}
 
 	private void UpdatePinnedBounds() {
@@ -2922,7 +2953,6 @@ public class ClothSimulation : MonoBehaviour
 			pinnedCenter /= pinnedVertices.Count;
 			geoCenter = (lowestLeftOut + highestRightIn) / 2;
 		}
-
 
 		Vector3 extent = Vector3.zero;
 		for (int i = 0; i < pinnedVertices.Count; i++) {
@@ -3150,6 +3180,8 @@ public class ClothSimulation : MonoBehaviour
 
 	private void OnEnable() {
 		if (isInitialized) {
+			Init();
+
 			dispatcher.refreshAllQueued = true;
 		}
 
@@ -3180,9 +3212,10 @@ public class ClothSimulation : MonoBehaviour
 		if (!Application.isPlaying) {
 			if (liveEdit) {
 				if (meshFilter.sharedMesh != null) meshFilter.sharedMesh.Clear();
+				isInitialized = false;
 				pinnedVertices.Clear();
 				selectedVertices.Clear();
-				isInitialized = false;
+				InitLODs();
 				Init();
 			}
 
@@ -3246,9 +3279,42 @@ public class ClothSimulation : MonoBehaviour
 		}
 	}
 
+	public void ShowCloth() {
+		//if (!isInitialized || meshFilter.sharedMesh == null) Init();
+		if (meshFilter == null) meshFilter = GetComponent<MeshFilter>();
+		if (meshRenderer == null) meshRenderer = GetComponent<MeshRenderer>();
+		if (dispatcher == null) UnityEngine.Object.FindAnyObjectByType<ClothDispatcher>();
+
+		//meshRenderer.sharedMaterial = dispatcher.materials[(int)clothMaterial].material;
+		Init();
+
+		meshRenderer.enabled = true;
+	}
+
+	public void HideCloth() {
+		if (meshFilter == null) meshFilter = GetComponent<MeshFilter>();
+		if (meshRenderer == null) meshRenderer = GetComponent<MeshRenderer>();
+
+		meshRenderer.enabled = false;
+		meshFilter.sharedMesh.Clear();
+		isInitialized = false;
+		showShapingGizmos = false;
+		selectedVertices.Clear();
+
+		if (x.IsCreated) x.Dispose();
+		if (normals.IsCreated) normals.Dispose();
+		if (uv.IsCreated) uv.Dispose();
+		if (textureUV.IsCreated) textureUV.Dispose();
+		triangles = null;
+		w = null;
+	}
+
+	#region Editor Selection and Pinning
 	public void SelectRow(int row) {
 		int minSubdivision = (int)Mathf.Min(maxNumRows, maxNumColumns);
 		int index = 0;
+
+		row *= maxNumRows / baseNumRows;
 
 		for (int i = 0; i < maxNumRows + 1; i++) {
 			for (int j = 0; j < maxNumColumns + 1; j++) {
@@ -3278,6 +3344,8 @@ public class ClothSimulation : MonoBehaviour
 		int minSubdivision = (int)Mathf.Min(maxNumRows, maxNumColumns);
 		int index = 0;
 
+		col *= maxNumRows / baseNumRows;
+
 		for (int i = 0; i < maxNumRows + 1; i++) {
 			for (int j = 0; j < maxNumColumns + 1; j++) {
 
@@ -3302,34 +3370,6 @@ public class ClothSimulation : MonoBehaviour
 		}
 	}
 
-	public void ShowCloth() {
-		//if (!isInitialized || meshFilter.sharedMesh == null) Init();
-		if (meshFilter == null) meshFilter = GetComponent<MeshFilter>();
-		if (meshRenderer == null) meshRenderer = GetComponent<MeshRenderer>();
-		if (dispatcher == null) UnityEngine.Object.FindAnyObjectByType<ClothDispatcher>();
-
-		meshRenderer.sharedMaterial = dispatcher.materials[(int)clothMaterial].material;
-		Init();
-
-		meshRenderer.enabled = true;
-	}
-
-	public void HideCloth() {
-		if (meshFilter == null) meshFilter = GetComponent<MeshFilter>();
-		if (meshRenderer == null) meshRenderer = GetComponent<MeshRenderer>();
-
-		meshRenderer.enabled = false;
-		meshFilter.sharedMesh.Clear();
-		isInitialized = false;
-
-		if (x.IsCreated) x.Dispose();
-		if (normals.IsCreated) normals.Dispose();
-		if (uv.IsCreated) uv.Dispose();
-		if (textureUV.IsCreated) textureUV.Dispose();
-		triangles = null;
-		w = null;
-	}
-
 	public void PinCorners() {
 		int minSubdivision = (int)Mathf.Min(maxNumRows, maxNumColumns);
 		int index = 0;
@@ -3339,7 +3379,7 @@ public class ClothSimulation : MonoBehaviour
 
 				if (clothShape == ClothShape.Quadrilateral) {
 
-					if ((j < cornerPinDimX || j > maxNumColumns - cornerPinDimX) && (i < cornerPinDimY || i > maxNumRows - cornerPinDimY)) {
+					if ((j < 1 || j > maxNumColumns - 1) && (i < 1 || i > maxNumRows - 1)) {
 						index = i * (maxNumColumns + 1) + j;
 
 						bool isPinned = false;
@@ -3353,7 +3393,7 @@ public class ClothSimulation : MonoBehaviour
 						if (!isPinned) {
 
 							bool isConnected = false;
-							for (int k = 0; k < connectedVertices.Count; j++) {
+							for (int k = 0; k < connectedVertices.Count; k++) {
 								if (connectedVertices[k].vertIndex == index) {
 									isConnected = true;
 									break;
@@ -3367,7 +3407,7 @@ public class ClothSimulation : MonoBehaviour
 				} else if (clothShape == ClothShape.Trapezoidal) {
 
 					if (j >= minSubdivision - i) {
-						if ((j < cornerPinDimX || j > maxNumColumns - cornerPinDimX) && (i < cornerPinDimY || i > maxNumRows - cornerPinDimY)) {
+						if ((j < 1 || j > maxNumColumns - 1) && (i < 1 || i > maxNumRows - 1)) {
 							bool isPinned = false;
 							for (int k = 0; k < pinnedVertices.Count; k++) {
 								if (pinnedVertices[k].index == index) {
@@ -3379,7 +3419,7 @@ public class ClothSimulation : MonoBehaviour
 							if (!isPinned) {
 
 								bool isConnected = false;
-								for (int k = 0; k < connectedVertices.Count; j++) {
+								for (int k = 0; k < connectedVertices.Count; k++) {
 									if (connectedVertices[k].vertIndex == index) {
 										isConnected = true;
 										break;
@@ -3399,7 +3439,7 @@ public class ClothSimulation : MonoBehaviour
 		}
 	}
 
-	public void PinLeftEdge(int pinWidth) {
+	public void PinLeftEdge() {
 		int minSubdivision = (int)Mathf.Min(maxNumRows, maxNumColumns);
 		int index = 0;
 
@@ -3408,7 +3448,7 @@ public class ClothSimulation : MonoBehaviour
 
 				if (clothShape == ClothShape.Quadrilateral) {
 
-					if (j < pinWidth) {
+					if (j == 0) {
 						index = i * (maxNumColumns + 1) + j;
 
 						bool isPinned = false;
@@ -3422,7 +3462,7 @@ public class ClothSimulation : MonoBehaviour
 						if (!isPinned) {
 
 							bool isConnected = false;
-							for (int k = 0; k < connectedVertices.Count; j++) {
+							for (int k = 0; k < connectedVertices.Count; k++) {
 								if (connectedVertices[k].vertIndex == index) {
 									isConnected = true;
 									break;
@@ -3436,7 +3476,7 @@ public class ClothSimulation : MonoBehaviour
 				} else if (clothShape == ClothShape.Trapezoidal) {
 
 					if (j >= minSubdivision - i) {
-						if (j < pinWidth || j < minSubdivision - i + pinWidth) {
+						if (j == 0 || j == minSubdivision - i) {
 							bool isPinned = false;
 							for (int k = 0; k < pinnedVertices.Count; k++) {
 								if (pinnedVertices[k].index == index) {
@@ -3448,7 +3488,7 @@ public class ClothSimulation : MonoBehaviour
 							if (!isPinned) {
 
 								bool isConnected = false;
-								for (int k = 0; k < connectedVertices.Count; j++) {
+								for (int k = 0; k < connectedVertices.Count; k++) {
 									if (connectedVertices[k].vertIndex == index) {
 										isConnected = true;
 										break;
@@ -3468,7 +3508,7 @@ public class ClothSimulation : MonoBehaviour
 		}
 	}
 
-	public void PinRightEdge(int pinWidth) {
+	public void PinRightEdge() {
 		int minSubdivision = (int)Mathf.Min(maxNumRows, maxNumColumns);
 		int index = 0;
 
@@ -3477,7 +3517,7 @@ public class ClothSimulation : MonoBehaviour
 
 				if (clothShape == ClothShape.Quadrilateral) {
 
-					if (j > maxNumColumns - pinWidth) {
+					if (j == maxNumColumns) {
 						index = i * (maxNumColumns + 1) + j;
 
 						bool isPinned = false;
@@ -3491,7 +3531,7 @@ public class ClothSimulation : MonoBehaviour
 						if (!isPinned) {
 
 							bool isConnected = false;
-							for (int k = 0; k < connectedVertices.Count; j++) {
+							for (int k = 0; k < connectedVertices.Count; k++) {
 								if (connectedVertices[k].vertIndex == index) {
 									isConnected = true;
 									break;
@@ -3505,7 +3545,7 @@ public class ClothSimulation : MonoBehaviour
 				} else if (clothShape == ClothShape.Trapezoidal) {
 
 					if (j >= minSubdivision - i) {
-						if (j > maxNumColumns - pinWidth) {
+						if (j == maxNumColumns) {
 							bool isPinned = false;
 							for (int k = 0; k < pinnedVertices.Count; k++) {
 								if (pinnedVertices[k].index == index) {
@@ -3517,7 +3557,7 @@ public class ClothSimulation : MonoBehaviour
 							if (!isPinned) {
 
 								bool isConnected = false;
-								for (int k = 0; k < connectedVertices.Count; j++) {
+								for (int k = 0; k < connectedVertices.Count; k++) {
 									if (connectedVertices[k].vertIndex == index) {
 										isConnected = true;
 										break;
@@ -3537,7 +3577,7 @@ public class ClothSimulation : MonoBehaviour
 		}
 	}
 
-	public void PinTopEdge(int pinWidth) {
+	public void PinTopEdge() {
 		int minSubdivision = (int)Mathf.Min(maxNumRows, maxNumColumns);
 		int index = 0;
 
@@ -3546,7 +3586,7 @@ public class ClothSimulation : MonoBehaviour
 
 				if (clothShape == ClothShape.Quadrilateral) {
 
-					if (i < pinWidth) {
+					if (i == 0) {
 						index = i * (maxNumColumns + 1) + j;
 
 						bool isPinned = false;
@@ -3560,7 +3600,7 @@ public class ClothSimulation : MonoBehaviour
 						if (!isPinned) {
 
 							bool isConnected = false;
-							for (int k = 0; k < connectedVertices.Count; j++) {
+							for (int k = 0; k < connectedVertices.Count; k++) {
 								if (connectedVertices[k].vertIndex == index) {
 									isConnected = true;
 									break;
@@ -3574,7 +3614,7 @@ public class ClothSimulation : MonoBehaviour
 				} else if (clothShape == ClothShape.Trapezoidal) {
 
 					if (j >= minSubdivision - i) {
-						if (i < pinWidth) {
+						if (i == 0) {
 							bool isPinned = false;
 							for (int k = 0; k < pinnedVertices.Count; k++) {
 								if (pinnedVertices[k].index == index) {
@@ -3586,7 +3626,7 @@ public class ClothSimulation : MonoBehaviour
 							if (!isPinned) {
 
 								bool isConnected = false;
-								for (int k = 0; k < connectedVertices.Count; j++) {
+								for (int k = 0; k < connectedVertices.Count; k++) {
 									if (connectedVertices[k].vertIndex == index) {
 										isConnected = true;
 										break;
@@ -3606,7 +3646,7 @@ public class ClothSimulation : MonoBehaviour
 		}
 	}
 
-	public void PinBottomEdge(int pinWidth) {
+	public void PinBottomEdge() {
 		int minSubdivision = (int)Mathf.Min(maxNumRows, maxNumColumns);
 		int index = 0;
 
@@ -3615,7 +3655,7 @@ public class ClothSimulation : MonoBehaviour
 
 				if (clothShape == ClothShape.Quadrilateral) {
 
-					if (i > maxNumRows - pinWidth) {
+					if (i == maxNumRows) {
 						index = i * (maxNumColumns + 1) + j;
 
 						bool isPinned = false;
@@ -3629,7 +3669,7 @@ public class ClothSimulation : MonoBehaviour
 						if (!isPinned) {
 
 							bool isConnected = false;
-							for (int k = 0; k < connectedVertices.Count; j++) {
+							for (int k = 0; k < connectedVertices.Count; k++) {
 								if (connectedVertices[k].vertIndex == index) {
 									isConnected = true;
 									break;
@@ -3643,7 +3683,7 @@ public class ClothSimulation : MonoBehaviour
 				} else if (clothShape == ClothShape.Trapezoidal) {
 
 					if (j >= minSubdivision - i) {
-						if (i > maxNumRows - pinWidth) {
+						if (i == maxNumRows) {
 							bool isPinned = false;
 							for (int k = 0; k < pinnedVertices.Count; k++) {
 								if (pinnedVertices[k].index == index) {
@@ -3655,7 +3695,7 @@ public class ClothSimulation : MonoBehaviour
 							if (!isPinned) {
 
 								bool isConnected = false;
-								for (int k = 0; k < connectedVertices.Count; j++) {
+								for (int k = 0; k < connectedVertices.Count; k++) {
 									if (connectedVertices[k].vertIndex == index) {
 										isConnected = true;
 										break;
@@ -3675,12 +3715,13 @@ public class ClothSimulation : MonoBehaviour
 		}
 	}
 
-	public void PinAllEdges(int pinWidth) {
-		PinLeftEdge(pinWidth);
-		PinRightEdge(pinWidth);
-		PinBottomEdge(pinWidth);
-		PinTopEdge(pinWidth);
+	public void PinAllEdges() {
+		PinLeftEdge();
+		PinRightEdge();
+		PinBottomEdge();
+		PinTopEdge();
 	}
+	#endregion
 #endif
 }
 

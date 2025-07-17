@@ -15,6 +15,7 @@ using Unity.Burst;
 using Unity.Jobs;
 using System.Threading;
 using static ClothSimulation;
+using UnityEditor.Search;
 
 public class ClothDispatcher : MonoBehaviour
 {
@@ -29,6 +30,7 @@ public class ClothDispatcher : MonoBehaviour
 	public bool isRendering = true;
 	public bool gravityActive = true;
 	public bool windActive = true;
+	public int maxLoadedVertices = 250000;
 	public List<ClothMaterial> materials = new List<ClothMaterial>();
 	public List<ClothTexture> textures = new List<ClothTexture>();
 	private Vector3[] clothsLastPosition;
@@ -103,7 +105,6 @@ public class ClothDispatcher : MonoBehaviour
 	NativeArray<float> stepTimeNative;
 	NativeArray<float> dampingNative;
 	NativeArray<float> maxVelocityNative;
-	NativeArray<bool> handleCollisionsNative;
 	NativeArray<bool> applyWindNative;
 	NativeArray<int> numVertsPerSubstepNative;
 	NativeArray<int> sortedClothIndicesNative;
@@ -128,6 +129,8 @@ public class ClothDispatcher : MonoBehaviour
 	NativeArray<float> dragFactorNative;
 	NativeArray<int3> clothWindForcesNative;
 	NativeArray<Vector3> pinnedVertNative; // Pinned Vertices
+	NativeArray<int> pinnedPerClothNativeBackup;
+	NativeArray<Vector3> pinnedVertNativeBackup;
 	NativeArray<int> vertToPinnedNative;
 	NativeArray<Vector3> clothPositionDeltaNative;
 	NativeArray<uint> textureDoubleSidedNative;
@@ -154,13 +157,13 @@ public class ClothDispatcher : MonoBehaviour
 	List<Material> materialGroupMaterial = new List<Material>();
 	List<int> textureGroupToMaterialIndex = new List<int>();
 
-	[HideInInspector] public bool refreshAllQueued = true;
-	[HideInInspector] public bool refreshRenderingQueued = true;
+	[HideInInspector] public bool refreshAllQueued = false;
+	[HideInInspector] public bool refreshRenderingQueued = false;
 	[HideInInspector] public bool refreshPinnedQueued = false;
 	[HideInInspector] public bool refreshConstraintLengthsQueued = false;
 	[HideInInspector] public bool numClothsChanged = false;
 
-	bool buffersGenerated = false;
+	public bool buffersGenerated { get; private set; } = false;
 	bool isInitialized = false;
 	bool simulationGenerated = false;
 	bool renderingGenerated = false;
@@ -192,7 +195,13 @@ public class ClothDispatcher : MonoBehaviour
 	private AsyncGPUReadbackRequest windForceReadbackRequest;
 	private bool pendingMeshReadback = false;
 	private bool pendingForceReadback = false;
-	private bool prevSimulatingState = false;
+	private bool xReadbackDone = false;
+	private bool vReadbackDone = false;
+	private bool normalsReadbackDone = false;
+
+	public float repeatIntervalSeconds = 1.0f; // How often to run the method
+	private bool _isSolvingLODs = false;
+	private CancellationTokenSource _cancellationTokenSource; // For graceful stopping
 
 	[StructLayout(LayoutKind.Sequential)]
 	private struct AdjacentTriangleIndices {
@@ -260,6 +269,7 @@ public class ClothDispatcher : MonoBehaviour
 		//rp = new RenderParams(clothMaterial);
 		rp = new RenderParams();
 		rp.worldBounds = new Bounds(Vector3.zero, 1000 * Vector3.one); // use tighter bounds
+		refreshAllQueued = false;
 
 		InitializeDispatcher();
 	}
@@ -279,13 +289,19 @@ public class ClothDispatcher : MonoBehaviour
 			UpdateConstraintLengths();
 		}
 
-		if (isSimulating && numSimulatedCloths != 0 && !refreshAllQueued && !readbackComplete) {
+		if (isSimulating && numSimulatedCloths != 0) {
 			int numPinned = 0;
 			for (int i = 0; i < numSimulatedCloths; i++) {
-				for (int j = 0; j < cloths[sortedClothIndicesNative[i]].pinnedVertLocalPos.Count; j++) {
-					pinnedVertNative[numPinned++] = cloths[sortedClothIndicesNative[i]].transform.TransformPoint(cloths[sortedClothIndicesNative[i]].pinnedVertLocalPos[j]);
+				if (refreshAllQueued && readbackComplete) {
+					for (int j = 0; j < pinnedPerClothNativeBackup[i]; j++) {
+						pinnedVertNative[numPinned] = cloths[sortedClothIndicesNative[i]].transform.TransformPoint(pinnedVertNativeBackup[numPinned++]);
+					}
+				} else {
+					for (int j = 0; j < cloths[sortedClothIndicesNative[i]].pinnedVertLocalPos.Count; j++) {
+						pinnedVertNative[numPinned++] = cloths[sortedClothIndicesNative[i]].transform.TransformPoint(cloths[sortedClothIndicesNative[i]].pinnedVertLocalPos[j]);
+					}
 				}
-
+				
 				// Wind Velocity
 				if (windActive) {
 					float time = Time.realtimeSinceStartup;
@@ -329,100 +345,7 @@ public class ClothDispatcher : MonoBehaviour
 
 	void Update() {
 
-		if (refreshAllQueued) {
-			if (buffersGenerated) {
-				if (!readbackComplete) {
-					if (!pendingMeshReadback) {
-						// Initiate readback
-						prevSimulatingState = isSimulating;
-						//isSimulating = false;
-						xReadbackRequest = AsyncGPUReadback.Request(xBuffer);
-						vReadbackRequest = AsyncGPUReadback.Request(vBuffer);
-						normalsReadbackRequest = AsyncGPUReadback.Request(normalsBuffer);
-						pendingMeshReadback = true;
-
-						for (int i = 0; i < numSimulatedCloths; i++) {
-							cloths[sortedClothIndicesNative[i]].readbackComplete = false;
-						}
-
-					} else {
-						// Copy X and Normals back to cloths
-						if (xReadbackRequest.done && vReadbackRequest.done && normalsReadbackRequest.done) {
-							if (xReadbackRequest.hasError || vReadbackRequest.hasError || normalsReadbackRequest.hasError) {
-								//Debug.LogError("GPU Readback Error!");
-							} else {
-
-								xNative = xReadbackRequest.GetData<Vector3>();
-								vNative = vReadbackRequest.GetData<Vector3>();
-								normalsNative = normalsReadbackRequest.GetData<Vector3>();
-
-								InvertNormalsJob invertJob = new InvertNormalsJob {
-									normalsIn = normalsNative,
-									normalsOut = normalsInverseNative
-								};
-
-								JobHandle jobHandle = invertJob.Schedule(numSimulatedVerts, 64);
-								jobHandle.Complete();
-
-								// Update positions for each cloth
-								for (int i = 0; i < numSimulatedCloths; i++) {
-									// Copy specific cloth's data from global arrays
-									unsafe {
-										// Copy Vertices
-										int size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
-										IntPtr sourcePtr = (IntPtr)((Vector3*)xNative.GetUnsafePtr() + activeVertexStartIndexNative[i]); // Calculate offset for the subset
-										IntPtr destPtr = (IntPtr)((Vector3*)cloths[sortedClothIndicesNative[i]].x.GetUnsafePtr());
-										UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
-
-										// Copy Velocities
-										size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
-										sourcePtr = (IntPtr)((Vector3*)vNative.GetUnsafePtr() + activeVertexStartIndexNative[i]); // Calculate offset for the subset
-										destPtr = (IntPtr)((Vector3*)cloths[sortedClothIndicesNative[i]].v.GetUnsafePtr());
-										UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
-
-										// Copy Normals
-										size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
-										sourcePtr = (IntPtr)((Vector3*)normalsNative.GetUnsafePtr() + activeVertexStartIndexNative[i]); // Calculate offset for the subset
-										destPtr = (IntPtr)((Vector3*)cloths[sortedClothIndicesNative[i]].normals.GetUnsafePtr());
-										UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
-									}
-
-									cloths[sortedClothIndicesNative[i]].positionOnReadback = cloths[sortedClothIndicesNative[i]].transform.position;
-									cloths[sortedClothIndicesNative[i]].readbackComplete = true;
-								}
-
-								readbackComplete = true;
-							}
-
-							pendingMeshReadback = false;
-						}
-					}
-				} else {
-					bool lodUpdating = false;
-					for (int i = 0; i < numSimulatedCloths; i++) {
-						if (cloths[sortedClothIndicesNative[i]].isChangingLOD) {
-							lodUpdating = true;
-						}
-					}
-
-					if (!lodUpdating) {
-						RefreshAll();
-						isSimulating = prevSimulatingState;
-						readbackComplete = false;
-						for (int i = 0; i < numSimulatedCloths; i++) {
-							cloths[sortedClothIndicesNative[i]].readbackComplete = false;
-						}
-					}
-				}
-				
-			} else {
-				RefreshAll();
-			}
-		}
-
-		if (refreshRenderingQueued) {
-			RefreshRendering();
-		}
+		CheckRefresh();
 
 		if (!buffersGenerated) return;
 
@@ -453,6 +376,167 @@ public class ClothDispatcher : MonoBehaviour
 			}
 		}
 
+	}
+
+	private void CheckRefresh() {
+		if (refreshAllQueued) {
+			if (buffersGenerated) {
+				if (!readbackComplete) {
+					if (!pendingMeshReadback) {
+						// Initiate readback
+						xReadbackRequest = AsyncGPUReadback.Request(xBuffer);
+						vReadbackRequest = AsyncGPUReadback.Request(vBuffer);
+						normalsReadbackRequest = AsyncGPUReadback.Request(normalsBuffer);
+						pendingMeshReadback = true;
+
+						for (int i = 0; i < numSimulatedCloths; i++) {
+							cloths[sortedClothIndicesNative[i]].readbackComplete = false;
+						}
+
+					} else {
+						// Copy X, V, and Normals back to cloths
+						if (xReadbackRequest.done) {
+							if (!xReadbackRequest.hasError) {
+
+								xNative = xReadbackRequest.GetData<Vector3>();
+
+								// Update positions for each cloth
+								for (int i = 0; i < numSimulatedCloths; i++) {
+									if (!cloths[sortedClothIndicesNative[i]].isActive) continue;
+
+									unsafe {
+										// Copy Vertices
+										int size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
+										IntPtr sourcePtr = (IntPtr)((Vector3*)xNative.GetUnsafePtr() + activeVertexStartIndexNative[i]);
+										IntPtr destPtr = (IntPtr)((Vector3*)cloths[sortedClothIndicesNative[i]].x.GetUnsafePtr());
+										UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
+									}
+
+									cloths[sortedClothIndicesNative[i]].positionOnReadback = cloths[sortedClothIndicesNative[i]].transform.position;
+								}
+
+								xReadbackDone = true;
+							}
+						}
+						if (vReadbackRequest.done) {
+							if (!vReadbackRequest.hasError) {
+
+								vNative = vReadbackRequest.GetData<Vector3>();
+
+								// Update positions for each cloth
+								for (int i = 0; i < numSimulatedCloths; i++) {
+									if (!cloths[sortedClothIndicesNative[i]].isActive) continue;
+
+									unsafe {
+										// Copy Velocities
+										int size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
+										IntPtr sourcePtr = (IntPtr)((Vector3*)vNative.GetUnsafePtr() + activeVertexStartIndexNative[i]);
+										IntPtr destPtr = (IntPtr)((Vector3*)cloths[sortedClothIndicesNative[i]].v.GetUnsafePtr());
+										UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
+									}
+								}
+
+								vReadbackDone = true;
+							}
+						}
+						if (normalsReadbackRequest.done) {
+							if (!normalsReadbackRequest.hasError) {
+
+								normalsNative = normalsReadbackRequest.GetData<Vector3>();
+
+								InvertNormalsJob invertJob = new InvertNormalsJob {
+									normalsIn = normalsNative,
+									normalsOut = normalsInverseNative
+								};
+
+								JobHandle jobHandle = invertJob.Schedule(numSimulatedVerts, 64);
+								jobHandle.Complete();
+
+								// Update positions for each cloth
+								for (int i = 0; i < numSimulatedCloths; i++) {
+									if (!cloths[sortedClothIndicesNative[i]].isActive) continue;
+
+									unsafe {
+										// Copy Normals
+										int size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
+										IntPtr sourcePtr = (IntPtr)((Vector3*)normalsNative.GetUnsafePtr() + activeVertexStartIndexNative[i]); // Calculate offset for the subset
+										IntPtr destPtr = (IntPtr)((Vector3*)cloths[sortedClothIndicesNative[i]].normals.GetUnsafePtr());
+										UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
+									}
+								}
+
+								normalsReadbackDone = true;
+							}
+						}
+
+						if (xReadbackDone && vReadbackDone && normalsReadbackDone) {
+
+							pinnedVertNativeBackup = new NativeArray<Vector3>(pinnedVertNative.Length, Allocator.Persistent);
+							pinnedPerClothNativeBackup = new NativeArray<int>(numSimulatedCloths, Allocator.Persistent);
+							int numPinned = 0;
+							for (int i = 0; i < numSimulatedCloths; i++) {
+								pinnedPerClothNativeBackup[i] = cloths[sortedClothIndicesNative[i]].pinnedVertLocalPos.Count;
+								for (int j = 0; j < cloths[sortedClothIndicesNative[i]].pinnedVertLocalPos.Count; j++) {
+									pinnedVertNativeBackup[numPinned++] = cloths[sortedClothIndicesNative[i]].pinnedVertLocalPos[j];
+								}
+							}
+
+							for (int i = 0; i < numSimulatedCloths; i++) {
+								if (!cloths[sortedClothIndicesNative[i]].isActive) continue;
+
+								cloths[sortedClothIndicesNative[i]].readbackComplete = true;
+							}
+
+							readbackComplete = true;
+							xReadbackDone = false;
+							vReadbackDone = false;
+							normalsReadbackDone = false;
+							pendingMeshReadback = false;
+						}
+					}
+				} else {
+
+					bool lodUpdating = false;
+					for (int i = 0; i < numSimulatedCloths; i++) {
+						if (cloths[sortedClothIndicesNative[i]].isChangingLOD) {
+							lodUpdating = true;
+							break;
+						}
+					}
+
+					if (!lodUpdating) {
+						RefreshAll();
+
+						readbackComplete = false;
+						for (int i = 0; i < numSimulatedCloths; i++) {
+							cloths[sortedClothIndicesNative[i]].readbackComplete = false;
+						}
+
+						pinnedVertNativeBackup.Dispose();
+						pinnedPerClothNativeBackup.Dispose();
+					}
+				}
+
+			} else {
+				// Buffers not generated, no readback, perform first time generation
+
+				bool lodUpdating = false;
+				for (int i = 0; i < cloths.Length; i++) {
+					if (cloths[i].isChangingLOD) {
+						lodUpdating = true;
+						break;
+					}
+				}
+
+				if (!lodUpdating) {
+					RefreshAll();
+				}
+			}
+		}
+
+		if (refreshRenderingQueued && !refreshAllQueued && buffersGenerated) {
+			RefreshRendering();
+		}
 	}
 
 	private void SimulationLoop() {
@@ -517,6 +601,10 @@ public class ClothDispatcher : MonoBehaviour
 			numDihedral0PerSubstep.Add(new List<int>());
 			bendingIDs.Add(new List<int>());
 		}
+
+		FindCloths();
+
+		StartSolvingLODs();
 
 		isInitialized = true;
 	}
@@ -589,6 +677,264 @@ public class ClothDispatcher : MonoBehaviour
 		cloths = Resources.FindObjectsOfTypeAll<ClothSimulation>();
 	}
 
+	private List<List<int>> GetConnectedIndices() {
+
+		List<List<int>> connectedClothGroups = new List<List<int>>(capacity: cloths.Length);
+
+		Dictionary<int, HashSet<int>> adjacencyMap = new Dictionary<int, HashSet<int>>();
+
+		// Initialize map and populate direct connections
+		for (int i = 0; i < cloths.Length; i++) {
+			if (cloths[i].isInitialized && cloths[i].isActive) {
+				adjacencyMap[i] = new HashSet<int>();
+
+				for (int j = 0; j < cloths[i].connectedVertices.Count; j++) {
+					int connectedClothIndex = Array.IndexOf(cloths, cloths[i].connectedVertices[j].connectedCloth);
+					adjacencyMap[i].Add(connectedClothIndex);
+
+					// Add reverse connection from B to A (graph is undirected)
+					// Ensure B is also in the map if it hasn't been processed yet
+					if (!adjacencyMap.ContainsKey(connectedClothIndex)) {
+						adjacencyMap[connectedClothIndex] = new HashSet<int>();
+					}
+					adjacencyMap[connectedClothIndex].Add(i);
+				}
+			}
+		}
+
+		// --- Step 2: Traverse the Graph (BFS) to Find Connected Components ---
+		HashSet<int> visited = new HashSet<int>();
+
+		for (int i = 0; i < cloths.Length; i++) {
+			if (cloths[i].isInitialized && cloths[i].isActive) {
+				if (!visited.Contains(i)) { // If this cloth hasn't been visited yet, it starts a new group
+					List<int> currentGroup = new List<int>();
+					Queue<int> queue = new Queue<int>();
+
+					queue.Enqueue(i);
+					visited.Add(i);
+					currentGroup.Add(i);
+
+					while (queue.Count > 0) {
+						int current = queue.Dequeue();
+
+						// Get neighbors of current cloth (ensure it's in the map, otherwise it's isolated)
+						if (adjacencyMap.TryGetValue(current, out HashSet<int> neighbors)) {
+							foreach (int neighbor in neighbors) {
+								if (!visited.Contains(neighbor)) {
+									visited.Add(neighbor);
+									queue.Enqueue(neighbor);
+									currentGroup.Add(neighbor);
+								}
+							}
+						}
+					}
+					connectedClothGroups.Add(currentGroup); // Add the complete group
+				}
+			}
+		}
+
+		return connectedClothGroups;
+	}
+
+	private void StartSolvingLODs() {
+		if (_isSolvingLODs) return;
+		_isSolvingLODs = true;
+		_cancellationTokenSource = new CancellationTokenSource();
+
+		RunLODSolveAsync(_cancellationTokenSource.Token);
+	}
+
+	private void StopSolvingLODs() {
+		if (!_isSolvingLODs) return;
+		_cancellationTokenSource?.Cancel(); // Signal the task to cancel
+		_isSolvingLODs = false;
+		_cancellationTokenSource?.Dispose(); // Dispose the source
+		_cancellationTokenSource = null;
+	}
+
+	private async Task RunLODSolveAsync(CancellationToken cancellationToken) {
+		while (!cancellationToken.IsCancellationRequested) {
+			// --- Run your periodic action ---
+			SolveLODs();
+
+			// --- Wait for the specified interval ---
+			try {
+				// Task.Delay runs on a background thread by default.
+				// It's efficient because it doesn't block.
+				await Task.Delay(TimeSpan.FromSeconds(repeatIntervalSeconds), cancellationToken);
+			} catch (TaskCanceledException) {
+				Debug.Log("[AsyncTimer] Periodic task cancelled.");
+				break; // Exit loop if cancelled
+			} catch (Exception ex) {
+				Debug.LogError($"[AsyncTimer] An error occurred in periodic task: {ex.Message}");
+				break; // Exit loop on unexpected errors
+			}
+		}
+		Debug.Log("[AsyncTimer] Periodic task stopped.");
+	}
+
+	private void SolveLODs() {
+
+		if (refreshAllQueued) return;
+
+		int totalVertices = 0;
+		bool lodChanged = false;
+
+		List<Tuple<float, int>> clothDistances = new List<Tuple<float, int>>();
+		List<List<int>> connectedClothGroups = GetConnectedIndices();
+
+		for (int i = 0; i < connectedClothGroups.Count; i++) {
+			float sqrDistance = 0;
+
+			for (int j = 0; j < connectedClothGroups[i].Count; j++) {
+				sqrDistance += (cloths[connectedClothGroups[i][j]].transform.position - Camera.main.transform.position).sqrMagnitude;
+			}
+
+			sqrDistance /= connectedClothGroups[i].Count;
+
+			clothDistances.Add(Tuple.Create(sqrDistance, i));
+
+			float currentMax = 1000000f;
+			int lodIndex = 0;
+			for (int j = 0; j < cloths[connectedClothGroups[i][0]].LODs.Count; j++) {
+				if (sqrDistance < cloths[connectedClothGroups[i][0]].LODs[j].maxDistanceSqr && cloths[connectedClothGroups[i][0]].LODs[j].maxDistance < currentMax) {
+					currentMax = cloths[connectedClothGroups[i][0]].LODs[j].maxDistance;
+					lodIndex = j;
+				}
+			}
+
+			for (int j = 0; j < connectedClothGroups[i].Count; j++) {
+				totalVertices += cloths[connectedClothGroups[i][j]].LODs[lodIndex].numVertices;
+
+				if (lodIndex != cloths[connectedClothGroups[i][j]].activeLODIndex) {
+					cloths[connectedClothGroups[i][j]].targetLODIndex = lodIndex;
+					cloths[connectedClothGroups[i][j]].isChangingLOD = true;
+
+					if (!buffersGenerated) cloths[connectedClothGroups[i][j]].readbackComplete = true;
+
+					lodChanged = true;
+				}
+			}
+		}
+
+		if (totalVertices < maxLoadedVertices) {
+
+			if (!lodChanged) return;
+
+			refreshAllQueued = true;
+
+		} else {
+
+			List<Tuple<float, int>> distSortedCloths = clothDistances.OrderBy(tuple => tuple.Item1).ToList();
+
+			totalVertices = 0;
+
+			for (int i = 0; i < distSortedCloths.Count; i++) {
+				for (int j = 0; j < connectedClothGroups[distSortedCloths[i].Item2].Count; j++) {
+					totalVertices += cloths[connectedClothGroups[distSortedCloths[i].Item2][j]].LODs[0].numVertices;
+					cloths[connectedClothGroups[distSortedCloths[i].Item2][j]].targetLODIndex = 0;
+				}
+			}
+
+			int currentMaxDetailLevel = 0;
+			int currentLimiter = 0;
+
+			while (totalVertices <= maxLoadedVertices) {
+				for (int i = currentLimiter; i < distSortedCloths.Count; i++) {
+
+					var cloth = cloths[connectedClothGroups[distSortedCloths[i].Item2][0]];
+					int nextLODIndex = cloth.targetLODIndex + 1;
+
+					while (true) {
+						// Increase LOD until caught up to closest's detail, at max distance, or at vertex limit
+
+						if (nextLODIndex <= cloth.maxQualityLODIndex) {
+							// Next LOD exists
+
+							if (i == currentLimiter) {
+								currentMaxDetailLevel = cloth.LODs[nextLODIndex].detailLevel;
+							}
+
+							if (distSortedCloths[i].Item1 < cloth.LODs[nextLODIndex].maxDistanceSqr) {
+								// Next LOD max distance is greater than cloth distance
+
+								int detailLevel = 0;
+
+								for (int j = 0; j < connectedClothGroups[distSortedCloths[i].Item2].Count; j++) {
+									if (cloths[connectedClothGroups[distSortedCloths[i].Item2][j]].LODs[nextLODIndex].detailLevel > detailLevel) {
+										detailLevel = cloths[connectedClothGroups[distSortedCloths[i].Item2][j]].LODs[nextLODIndex].detailLevel;
+									}
+								}
+
+								if (detailLevel <= currentMaxDetailLevel || i == currentLimiter) {
+									// Next LOD detail level is under or equivalent to current allowed max
+
+									int addedVerts = 0;
+
+									for (int j = 0; j < connectedClothGroups[distSortedCloths[i].Item2].Count; j++) {
+										addedVerts += cloths[connectedClothGroups[distSortedCloths[i].Item2][j]].LODs[nextLODIndex].numVertices - cloths[connectedClothGroups[distSortedCloths[i].Item2][j]].LODs[nextLODIndex - 1].numVertices;
+									}
+
+									if (totalVertices + addedVerts <= maxLoadedVertices) {
+										// Vertices under maximum
+
+										for (int j = 0; j < connectedClothGroups[distSortedCloths[i].Item2].Count; j++) {
+											cloths[connectedClothGroups[distSortedCloths[i].Item2][j]].targetLODIndex = nextLODIndex;
+										}
+										totalVertices += addedVerts;
+
+										if (i == currentLimiter) {
+											break;
+										}
+
+										nextLODIndex++;
+										continue;
+									}
+								}
+							}
+						}
+
+						if (i == currentLimiter) {
+							currentLimiter++;
+						}
+
+						break;
+					}
+				}
+
+				if (currentLimiter >= distSortedCloths.Count) {
+					break;
+				}
+			}
+			
+			lodChanged = false;
+
+			for (int i = 0; i < distSortedCloths.Count; i++) {
+
+				for (int j = 0; j < connectedClothGroups[distSortedCloths[i].Item2].Count; j++) {
+
+					if (cloths[connectedClothGroups[distSortedCloths[i].Item2][j]].targetLODIndex != cloths[connectedClothGroups[distSortedCloths[i].Item2][j]].activeLODIndex) {
+						lodChanged = true;
+
+						cloths[connectedClothGroups[distSortedCloths[i].Item2][j]].isChangingLOD = true;
+						if (!buffersGenerated) cloths[connectedClothGroups[distSortedCloths[i].Item2][j]].readbackComplete = true;
+
+					} else {
+
+						cloths[connectedClothGroups[distSortedCloths[i].Item2][j]].isChangingLOD = false;
+						if (!buffersGenerated) cloths[connectedClothGroups[distSortedCloths[i].Item2][j]].readbackComplete = false;
+					}
+
+				}
+
+				
+			}
+
+			if (lodChanged) refreshAllQueued = true;
+		}
+	}
+
 	private void UpdateClothInfo() {
 		// Reset cloth information
 
@@ -654,7 +1000,6 @@ public class ClothDispatcher : MonoBehaviour
 				
 			}
 		}
-		Debug.Log("Num Pinned: " + numPinnedVertices);
 		Debug.Log("Total Verts: " + numActiveVerts);
 
 		numActiveCloths = activeClothIndices.Count;
@@ -786,7 +1131,6 @@ public class ClothDispatcher : MonoBehaviour
 		stepTimeNative = new NativeArray<float>(numSimulatedCloths, Allocator.Temp);
 		dampingNative = new NativeArray<float>(numSimulatedCloths, Allocator.Temp);
 		maxVelocityNative = new NativeArray<float>(numSimulatedCloths, Allocator.Temp);
-		handleCollisionsNative = new NativeArray<bool>(numSimulatedCloths, Allocator.Temp);
 		vertexToTrianglesNative = new NativeArray<AdjacentTriangleIndices>(numSimulatedVerts, Allocator.Temp);
 		triangleNormalsNative = new NativeArray<Vector3>(numSimulatedTriangles, Allocator.Temp);
 		dragFactorNative = new NativeArray<float>(numSimulatedVerts, Allocator.Temp);
@@ -888,7 +1232,6 @@ public class ClothDispatcher : MonoBehaviour
 				dampingNative[i] = cloths[clothIndex].damping;
 				//maxVelocityNative[i] = 1;// * substepsNative[i];
 				maxVelocityNative[i] = 1 / stepTimeNative[i];
-				handleCollisionsNative[i] = cloths[clothIndex].handleCollisions;
 				applyWindNative[i] = cloths[clothIndex].simulateWind;
 				solveBendingNative[i] = cloths[clothIndex].solveBending ? 1 : 0;
 
@@ -1746,6 +2089,8 @@ public class ClothDispatcher : MonoBehaviour
 
 	private void OnDisable() {
 		ForceRelease();
+
+		StopSolvingLODs();
 	}
 
 	private void OnEnable() {
@@ -1847,7 +2192,6 @@ public class ClothDispatcher : MonoBehaviour
 		if (stepTimeNative.IsCreated) stepTimeNative.Dispose();
 		if (dampingNative.IsCreated) dampingNative.Dispose();
 		if (maxVelocityNative.IsCreated) maxVelocityNative.Dispose();
-		if (handleCollisionsNative.IsCreated) handleCollisionsNative.Dispose();
 		if (vertexToTrianglesNative.IsCreated) vertexToTrianglesNative.Dispose();
 		if (triangleNormalsNative.IsCreated) triangleNormalsNative.Dispose();
 		if (dragFactorNative.IsCreated) dragFactorNative.Dispose();
@@ -1887,6 +2231,9 @@ public class ClothDispatcher : MonoBehaviour
 		ReleaseSimulationBuffersAndNatives();
 		ReleaseRenderingBuffers();
 		ReleaseCommandBuffers();
+
+		if (pinnedVertNativeBackup.IsCreated) pinnedVertNativeBackup.Dispose();
+		if (pinnedPerClothNativeBackup.IsCreated) pinnedPerClothNativeBackup.Dispose();
 	}
 
 	void ReleaseCommandBuffers() {
