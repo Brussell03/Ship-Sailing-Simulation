@@ -16,23 +16,21 @@ public class ClothEditor : Editor {
 	private int selectedRow = -1;
 	private bool confirmingClear;
 
-	private SerializedProperty numRowsProp;
-	private SerializedProperty numColumnsProp;
-
 	private void OnEnable() {
-		numRowsProp = serializedObject.FindProperty("numRows");
-		numColumnsProp = serializedObject.FindProperty("numColumns");
 	}
 
 	public override void OnInspectorGUI() {
-		base.OnInspectorGUI();
-		serializedObject.Update();
-
 		ClothSimulation cloth = (ClothSimulation)target;
 		Color defaultGuiColor = GUI.backgroundColor;
 
-		//EditorGUILayout.PropertyField(numRowsProp);
-		//EditorGUILayout.PropertyField(numColumnsProp);
+		using (new EditorGUI.DisabledScope(true)) {
+			EditorGUILayout.LabelField("Avg Cell Width:", ((cloth.bottomWidth + cloth.topWidth) / cloth.baseNumColumns / 2).ToString());
+			EditorGUILayout.LabelField("Avg Cell Height:", ((cloth.leftHeight + cloth.rightHeight) / cloth.baseNumRows / 2).ToString());
+		}
+
+		base.OnInspectorGUI();
+		serializedObject.Update();
+
 
 		if (Application.isPlaying) return;
 

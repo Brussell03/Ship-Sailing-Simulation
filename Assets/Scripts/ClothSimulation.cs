@@ -12,8 +12,36 @@ using Unity.VisualScripting;
 using UnityEngine;
 
 [RequireComponent(typeof(MeshFilter)), RequireComponent(typeof(MeshRenderer)), RequireComponent(typeof(BoxCollider)), ExecuteAlways]
-public class ClothSimulation : MonoBehaviour
-{
+public class ClothSimulation : MonoBehaviour {
+
+	[Header("Cloth Properties")]
+	public ClothMaterial clothMaterial;
+	public Vector2 compression = Vector2.zero;
+	[Tooltip("Effects how much bending constraints can be tightened.")]
+	[Range(0, 1)] public float wrinkliness = 0f;
+	[Tooltip("Effects how much vertices are scrambled away from their grid position.")]
+	[Range(0, 1)] public float randomness = 0.5f;
+	[Tooltip("Vertex randomness seed.")]
+	[SerializeField] private int seed;
+	[Tooltip("What rigidbody the force is applied to.")] public Rigidbody forceRigidbody;
+	public bool isDoubleSided = true;
+	public bool applyGravity = true;
+	public bool applyWind = true;
+
+	[Header("Shape Settings")]
+	public bool liveEdit = false;
+	public ClothShape clothShape = ClothShape.Quadrilateral;
+	[Min(2)] public int baseNumRows = 15;
+	[Min(2)] public int baseNumColumns = 15;
+	[Min(0.0000001f)] public float topWidth = 10f;
+	[Min(0.0000001f)] public float bottomWidth = 10f;
+	[Min(0.0000001f)] public float leftHeight = 10f;
+	[Min(0.0000001f)] public float rightHeight = 10f;
+	public float topCenter = 0f;
+	public float bottomCenter = 0f;
+	public float leftCenter = 0f;
+	public float rightCenter = 0f;
+
 	[Header("Simulation Settings")]
 	[Range(0, 0.0001f)] public float stretchingCompliance = 0f;
 	[Range(0, 10)] public float bendingCompliance = 0f;
@@ -55,35 +83,6 @@ public class ClothSimulation : MonoBehaviour
 			}
 		}
 	}
-
-	[Header("Cloth Properties")]
-	public ClothMaterial clothMaterial;
-	[Min(0.0000001f)] public float thickness = 0.001f; // m
-	public Vector2 compression = Vector2.zero;
-	[Tooltip("Effects how much bending constraints can be tightened.")]
-	[Range(0, 1)] public float wrinkliness = 0f;
-	[Tooltip("Effects how much vertices are scrambled away from their grid position.")]
-	[Range(0, 1)] public float randomness = 0.5f;
-	[Tooltip("Vertex randomness seed.")]
-	[SerializeField] private int seed;
-	[Tooltip("What rigidbody the force is applied to.")] public Rigidbody forceRigidbody;
-	public bool isDoubleSided = true;
-	public bool applyGravity = true;
-	public bool applyWind = true;
-
-	[Header("Shape Settings")]
-	public bool liveEdit = false;
-	public ClothShape clothShape = ClothShape.Quadrilateral;
-	[Min(2)] public int baseNumRows = 15;
-	[Min(2)] public int baseNumColumns = 15;
-	[Min(0.0000001f)] public float topWidth = 10f;
-	[Min(0.0000001f)] public float bottomWidth = 10f;
-	[Min(0.0000001f)] public float leftHeight = 10f;
-	[Min(0.0000001f)] public float rightHeight = 10f;
-	public float topCenter = 0f;
-	public float bottomCenter = 0f;
-	public float leftCenter = 0f;
-	public float rightCenter = 0f;
 
 	[Header("Texture Settings")]
 	[SerializeField] private ClothTexture _clothTexture;
@@ -146,12 +145,10 @@ public class ClothSimulation : MonoBehaviour
 	public int targetLODIndex { get; set; }
 	public int activeLODIndex { get; private set; }
 	private int cutPinStartIndex = -1;
-	private int numRowsOnInit;
-	private int numColumnsOnInit;
 
 	// Floats
 	public float distBetweenHandles { get; private set; }
-	public float mass { get; private set; }
+	[field: SerializeField] public float mass { get; private set; }
 	private float hashSpacing = 1f;
 	private float airDensity = 1.287f; // kg/m^3
 
@@ -367,15 +364,21 @@ public class ClothSimulation : MonoBehaviour
 
 		if (forceRigidbody != null) {
 			if (applyWind && pinnedVertices != null && pinnedVertices.Count > 0 && applyGravity) {
-				forceRigidbody.AddForceAtPosition(windForce + mass * Physics.gravity, pinnedCenter);
+				forceRigidbody.AddForceAtPosition(windForce + mass * Physics.gravity, transform.TransformPoint(pinnedCenter));
+
+				Debug.DrawRay(transform.TransformPoint(pinnedCenter), (windForce + mass * Physics.gravity) / 1000, Color.red);
 
 			} else {
 				if (applyGravity) {
-					forceRigidbody.AddForceAtPosition(mass * Physics.gravity, pinnedCenter);
+					forceRigidbody.AddForceAtPosition(mass * Physics.gravity, transform.TransformPoint(pinnedCenter));
+
+					Debug.DrawRay(transform.TransformPoint(pinnedCenter), (mass * Physics.gravity) / 1000, Color.red);
 
 				}
 				if (applyWind && pinnedVertices != null && pinnedVertices.Count > 0) {
-					forceRigidbody.AddForceAtPosition(windForce, pinnedCenter);
+					forceRigidbody.AddForceAtPosition(windForce, transform.TransformPoint(pinnedCenter));
+
+					Debug.DrawRay(transform.TransformPoint(pinnedCenter), (windForce) / 1000, Color.red);
 				}
 			}
 		}
@@ -506,9 +509,6 @@ public class ClothSimulation : MonoBehaviour
 				}
 			}
 
-			numRowsOnInit = LODs[activeLODIndex].numRows;
-			numColumnsOnInit = LODs[activeLODIndex].numColumns;
-
 			Mesh mesh = new Mesh();
 			mesh.vertices = xWithPins;
 			mesh.uv = uv.ToArray();
@@ -527,12 +527,13 @@ public class ClothSimulation : MonoBehaviour
 
 			mesh.RecalculateBounds();
 			mesh.RecalculateNormals();
+
 			Vector3[] normals = mesh.normals;
 			for (int i = 0; i < normals.Length; i++) {
 				normals[i] *= -1;
 			}
-			mesh.normals = normals;
 
+			mesh.normals = normals;
 			meshFilter.sharedMesh = mesh;
 		}
 
@@ -720,13 +721,13 @@ public class ClothSimulation : MonoBehaviour
 					}
 
 					cellArea *= (1f + compression.x) * (1f + compression.y);
-					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * thickness * cellArea);
+					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * cellArea);
 					dragFactor[index] = 0.5f * cellArea * airDensity;
 					totalArea += cellArea;
 				}
 			}
 
-			mass = totalArea * thickness * dispatcher.materials[(int)clothMaterial].surfaceDensity;
+			mass = totalArea * dispatcher.materials[(int)clothMaterial].surfaceDensity;
 
 			for (int i = 0; i < lod.pinIndices.Count; i++) {
 				pinnedVertInvMass.Add(w[lod.pinIndices[i]]);
@@ -967,14 +968,14 @@ public class ClothSimulation : MonoBehaviour
 					}
 
 					cellArea *= (1f + compression.x) * (1f + compression.y);
-					w[ind] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * thickness * cellArea);
+					w[ind] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * cellArea);
 					dragFactor[ind++] = 0.5f * cellArea * airDensity;
 					totalArea += cellArea;
 
 				}
 			}
 
-			mass = totalArea * thickness * dispatcher.materials[(int)clothMaterial].surfaceDensity;
+			mass = totalArea * dispatcher.materials[(int)clothMaterial].surfaceDensity;
 
 			for (int i = 0; i < lod.pinIndices.Count; i++) {
 				pinnedVertInvMass.Add(w[lod.pinIndices[i]]);
@@ -2214,7 +2215,7 @@ public class ClothSimulation : MonoBehaviour
 					}
 
 					cellArea *= (1f + compression.x) * (1f + compression.y);
-					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * thickness * cellArea);
+					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * cellArea);
 					dragFactor[index] = 0.5f * cellArea * airDensity;
 					index++;
 				}
@@ -2286,7 +2287,7 @@ public class ClothSimulation : MonoBehaviour
 					}
 
 					cellArea *= (1f + compression.x) * (1f + compression.y);
-					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * thickness * cellArea);
+					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * cellArea);
 					dragFactor[index++] = 0.5f * cellArea * airDensity;
 
 				}
@@ -2613,7 +2614,7 @@ public class ClothSimulation : MonoBehaviour
 					}
 
 					cellArea *= (1f + compression.x) * (1f + compression.y);
-					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * thickness * cellArea);
+					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * cellArea);
 					dragFactor[index] = 0.5f * cellArea * airDensity;
 					index++;
 				}
@@ -2685,7 +2686,7 @@ public class ClothSimulation : MonoBehaviour
 					}
 
 					cellArea *= (1f + compression.x) * (1f + compression.y);
-					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * thickness * cellArea);
+					w[index] = wScale / (dispatcher.materials[(int)clothMaterial].surfaceDensity * cellArea);
 					dragFactor[index++] = 0.5f * cellArea * airDensity;
 
 				}
@@ -3211,7 +3212,9 @@ public class ClothSimulation : MonoBehaviour
 	private void OnValidate() {
 		if (!Application.isPlaying) {
 			if (liveEdit) {
-				if (meshFilter.sharedMesh != null) meshFilter.sharedMesh.Clear();
+				if (meshFilter != null) {
+					if (meshFilter.sharedMesh != null) meshFilter.sharedMesh.Clear();
+				}
 				isInitialized = false;
 				pinnedVertices.Clear();
 				selectedVertices.Clear();
@@ -3227,9 +3230,9 @@ public class ClothSimulation : MonoBehaviour
 
 				// Update UV's
 				if (clothShape == ClothShape.Quadrilateral) {
-					for (int i = 0; i < numRowsOnInit + 1; i++) {
-						for (int j = 0; j < numColumnsOnInit + 1; j++) {
-							int index = j + i * (numColumnsOnInit + 1);
+					for (int i = 0; i < LODs[maxQualityLODIndex].numRows + 1; i++) {
+						for (int j = 0; j < LODs[maxQualityLODIndex].numColumns + 1; j++) {
+							int index = j + i * (LODs[maxQualityLODIndex].numColumns + 1);
 
 							Vector2 texUV = new Vector2((uv[index].x - textureOffset.x) / textureSize.x, (uv[index].y - textureOffset.y) / textureSize.y);
 							Vector2 rotatedTexUV = new Vector2(texUV.x * Mathf.Cos(Mathf.Deg2Rad * textureRotation) - texUV.y * Mathf.Sin(Mathf.Deg2Rad * textureRotation), texUV.x * Mathf.Sin(Mathf.Deg2Rad * textureRotation) + texUV.y * Mathf.Cos(Mathf.Deg2Rad * textureRotation)) + Vector2.one / 2;
@@ -3242,10 +3245,10 @@ public class ClothSimulation : MonoBehaviour
 						}
 					}
 				} else if (clothShape == ClothShape.Trapezoidal) {
-					int minSubdivision = (int)Mathf.Min(numRowsOnInit, numColumnsOnInit);
+					int minSubdivision = (int)Mathf.Min(LODs[maxQualityLODIndex].numRows, LODs[maxQualityLODIndex].numColumns);
 					int ind = 0;
-					for (int i = 0; i < numRowsOnInit + 1; i++) {
-						for (int j = 0; j < numColumnsOnInit + 1; j++) {
+					for (int i = 0; i < LODs[maxQualityLODIndex].numRows + 1; i++) {
+						for (int j = 0; j < LODs[maxQualityLODIndex].numColumns + 1; j++) {
 							if (j >= minSubdivision - i) {
 
 								Vector2 texUV = new Vector2((uv[ind].x - textureOffset.x) / textureSize.x, (uv[ind].y - textureOffset.y) / textureSize.y);

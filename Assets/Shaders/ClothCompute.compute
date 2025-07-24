@@ -138,8 +138,8 @@ void PredictPosition (uint3 id : SV_DispatchThreadID)
     
         float3 vertexNormal = dot(windNormal, normals[id.x]) < 0 ? -normals[id.x] : normals[id.x];
         float windSpeedNormal = dot(adjWindVector, vertexNormal);
-    
-        float3 vertexShearNormal = normalize(windNormal - vertexNormal);
+        
+        float3 vertexShearNormal = normalize(adjWindVector - windSpeedNormal * vertexNormal);
         float windSpeedShear = dot(adjWindVector, vertexShearNormal);
     
         float3 forceNormal = dragCoeffPerp * windSpeedNormal * windSpeedNormal * vertexNormal;
