@@ -238,10 +238,10 @@ public class ClothDispatcher : MonoBehaviour
 	}
 
 	[BurstCompile]
-	private struct OffsetClothVertices : IJobParallelFor {
-		public NativeArray<Vector3> x;
-		[ReadOnly] public NativeArray<Vector3> clothPositionDelta;
+	public struct TransformPointsJob : IJobParallelFor {
+		public NativeArray<Vector3> positions;
 		[ReadOnly] public NativeArray<int> clothStartIndex;
+		[ReadOnly] public NativeArray<float4x4> transformMatrices;
 
 		public void Execute(int index) {
 			int clothIndex = 0;
@@ -255,7 +255,7 @@ public class ClothDispatcher : MonoBehaviour
 				}
 			}
 
-			x[index] += clothPositionDelta[clothIndex];
+			positions[index] = math.mul(transformMatrices[clothIndex], new float4(positions[index], 1.0f)).xyz;
 		}
 	}
 
@@ -276,9 +276,9 @@ public class ClothDispatcher : MonoBehaviour
     // Update is called once per frame
     void FixedUpdate()
     {
-		fixedUpdateTicker++;
+		/*fixedUpdateTicker++;
 		if (fixedUpdateTicker / (int)Time.timeScale < 1) return;
-		fixedUpdateTicker = 0;
+		fixedUpdateTicker = 0;*/
 
 		if (!buffersGenerated) {
 			return;
@@ -315,6 +315,15 @@ public class ClothDispatcher : MonoBehaviour
 					float horizontalFactor = Mathf.Sin(time * 1f * frequencyFactor + Mathf.PingPong(time, UnityEngine.Random.Range(5f, 20f)));
 					windVectorsNative[i] = applyWindNative[i] ? (gameManager.windDirection * ((1f - windChaos / 4f) + chaosMagnitude * windChaos) + (transform.up * verticalFactor + transform.right * horizontalFactor) * chaosMagnitude * windChaos * 0.5f) * windSpeedVar : Vector3.zero;
 					//windVectorsNative[i] = applyWindNative[i] ? (transform.forward * windSpeed) : Vector3.zero;
+
+					if (cloths[sortedClothIndicesNative[i]].oneSidedWind) {
+						float windForwardComp = Vector3.Dot(cloths[sortedClothIndicesNative[i]].transform.forward, windVectorsNative[i]);
+						if (windForwardComp < 0) {
+							// Wind force is against the forward direction of the cloth
+							windVectorsNative[i] -= cloths[sortedClothIndicesNative[i]].transform.forward * windForwardComp;
+						}
+					}
+
 				} else {
 					windVectorsNative[i] = Vector3.zero;
 				}
@@ -337,7 +346,7 @@ public class ClothDispatcher : MonoBehaviour
 			SimulationLoop();
 		}
 
-		if (!pendingForceReadback) {
+		if (!pendingForceReadback && !refreshAllQueued) {
 			windForceReadbackRequest = AsyncGPUReadback.Request(clothWindForceBuffer);
 			pendingForceReadback = true;
 		}
@@ -356,10 +365,8 @@ public class ClothDispatcher : MonoBehaviour
 				} else {
 					clothWindForcesNative = windForceReadbackRequest.GetData<int3>();
 
-					for (int i = 0; i < numActiveCloths; i++) {
-						if (cloths[sortedClothIndicesNative[i]].isActive) {
-							cloths[sortedClothIndicesNative[i]].windForce = new Vector3(clothWindForcesNative[i].x, clothWindForcesNative[i].y, clothWindForcesNative[i].z) / 10000.0f;
-						}
+					for (int i = 0; i < numSimulatedCloths; i++) {
+						cloths[sortedClothIndicesNative[i]].windForce = new Vector3(clothWindForcesNative[i].x, clothWindForcesNative[i].y, clothWindForcesNative[i].z) / 10000.0f;
 					}
 
 					if (clothWindForcesNative.IsCreated) clothWindForcesNative.Dispose();
@@ -400,9 +407,27 @@ public class ClothDispatcher : MonoBehaviour
 
 								xNative = xReadbackRequest.GetData<Vector3>();
 
+								NativeArray<float4x4> transformMaticesNative = new NativeArray<float4x4>(numSimulatedCloths, Allocator.TempJob);
+
+								for (int i = 0; i < numSimulatedCloths; i++) {
+
+									int clothIndex = sortedClothIndicesNative[i];
+									transformMaticesNative[i] = cloths[clothIndex].transform.worldToLocalMatrix;
+								}
+
+								TransformPointsJob transformJob = new TransformPointsJob {
+									positions = xNative,
+									clothStartIndex = activeVertexStartIndexNative,
+									transformMatrices = transformMaticesNative
+								};
+
+								JobHandle jobHandle = transformJob.Schedule(numActiveVerts, 64);
+								jobHandle.Complete();
+								transformMaticesNative.Dispose();
+
 								// Update positions for each cloth
 								for (int i = 0; i < numSimulatedCloths; i++) {
-									if (!cloths[sortedClothIndicesNative[i]].isActive) continue;
+									if (!cloths[sortedClothIndicesNative[i]].isActiveAndEnabled) continue;
 
 									unsafe {
 										// Copy Vertices
@@ -411,8 +436,6 @@ public class ClothDispatcher : MonoBehaviour
 										IntPtr destPtr = (IntPtr)((Vector3*)cloths[sortedClothIndicesNative[i]].x.GetUnsafePtr());
 										UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
 									}
-
-									cloths[sortedClothIndicesNative[i]].positionOnReadback = cloths[sortedClothIndicesNative[i]].transform.position;
 								}
 
 								xReadbackDone = true;
@@ -425,7 +448,7 @@ public class ClothDispatcher : MonoBehaviour
 
 								// Update positions for each cloth
 								for (int i = 0; i < numSimulatedCloths; i++) {
-									if (!cloths[sortedClothIndicesNative[i]].isActive) continue;
+									if (!cloths[sortedClothIndicesNative[i]].isActiveAndEnabled) continue;
 
 									unsafe {
 										// Copy Velocities
@@ -454,7 +477,7 @@ public class ClothDispatcher : MonoBehaviour
 
 								// Update positions for each cloth
 								for (int i = 0; i < numSimulatedCloths; i++) {
-									if (!cloths[sortedClothIndicesNative[i]].isActive) continue;
+									if (!cloths[sortedClothIndicesNative[i]].isActiveAndEnabled) continue;
 
 									unsafe {
 										// Copy Normals
@@ -473,6 +496,7 @@ public class ClothDispatcher : MonoBehaviour
 
 							pinnedVertNativeBackup = new NativeArray<Vector3>(pinnedVertNative.Length, Allocator.Persistent);
 							pinnedPerClothNativeBackup = new NativeArray<int>(numSimulatedCloths, Allocator.Persistent);
+
 							int numPinned = 0;
 							for (int i = 0; i < numSimulatedCloths; i++) {
 								pinnedPerClothNativeBackup[i] = cloths[sortedClothIndicesNative[i]].pinnedVertLocalPos.Count;
@@ -482,7 +506,7 @@ public class ClothDispatcher : MonoBehaviour
 							}
 
 							for (int i = 0; i < numSimulatedCloths; i++) {
-								if (!cloths[sortedClothIndicesNative[i]].isActive) continue;
+								if (!cloths[sortedClothIndicesNative[i]].isActiveAndEnabled) continue;
 
 								cloths[sortedClothIndicesNative[i]].readbackComplete = true;
 							}
@@ -685,7 +709,7 @@ public class ClothDispatcher : MonoBehaviour
 
 		// Initialize map and populate direct connections
 		for (int i = 0; i < cloths.Length; i++) {
-			if (cloths[i].isInitialized && cloths[i].isActive) {
+			if (cloths[i].isInitialized && cloths[i].isActiveAndEnabled) {
 				adjacencyMap[i] = new HashSet<int>();
 
 				for (int j = 0; j < cloths[i].connectedVertices.Count; j++) {
@@ -706,7 +730,7 @@ public class ClothDispatcher : MonoBehaviour
 		HashSet<int> visited = new HashSet<int>();
 
 		for (int i = 0; i < cloths.Length; i++) {
-			if (cloths[i].isInitialized && cloths[i].isActive) {
+			if (cloths[i].isInitialized && cloths[i].isActiveAndEnabled) {
 				if (!visited.Contains(i)) { // If this cloth hasn't been visited yet, it starts a new group
 					List<int> currentGroup = new List<int>();
 					Queue<int> queue = new Queue<int>();
@@ -781,6 +805,31 @@ public class ClothDispatcher : MonoBehaviour
 		int totalVertices = 0;
 		bool lodChanged = false;
 
+		if (Time.timeScale > 1) {
+			for (int i = 0; i < cloths.Length; i++) {
+				if (cloths[i].isInitialized && cloths[i].isActiveAndEnabled) {
+					totalVertices += cloths[i].LODs[0].numVertices;
+					cloths[i].targetLODIndex = 0;
+
+					if (0 != cloths[i].activeLODIndex) {
+						lodChanged = true;
+
+						cloths[i].isChangingLOD = true;
+						if (!buffersGenerated) cloths[i].readbackComplete = true;
+
+					} else {
+
+						cloths[i].isChangingLOD = false;
+						if (!buffersGenerated) cloths[i].readbackComplete = false;
+					}
+				}
+			}
+
+			if (lodChanged || !buffersGenerated) refreshAllQueued = true;
+
+			return;
+		}
+
 		List<Tuple<float, int>> clothDistances = new List<Tuple<float, int>>();
 		List<List<int>> connectedClothGroups = GetConnectedIndices();
 
@@ -820,7 +869,7 @@ public class ClothDispatcher : MonoBehaviour
 
 		if (totalVertices < maxLoadedVertices) {
 
-			if (!lodChanged) return;
+			if (!lodChanged && buffersGenerated) return;
 
 			refreshAllQueued = true;
 
@@ -931,7 +980,7 @@ public class ClothDispatcher : MonoBehaviour
 				
 			}
 
-			if (lodChanged) refreshAllQueued = true;
+			if (lodChanged || !buffersGenerated) refreshAllQueued = true;
 		}
 	}
 
@@ -967,7 +1016,7 @@ public class ClothDispatcher : MonoBehaviour
 			// Add the number of vertices representing a single side of the cloth
 			totalVerts += cloths[i].numOneSidedVerts;
 
-			if (cloths[i].isInitialized && cloths[i].isActive) {
+			if (cloths[i].isInitialized && cloths[i].isActiveAndEnabled) {
 				activeClothIndices.Add(i);
 				totalArea += cloths[i].mass / materials[(int)cloths[i].clothMaterial].surfaceDensity;
 
@@ -1045,7 +1094,7 @@ public class ClothDispatcher : MonoBehaviour
 		int addedCloths = 0;
 		for (int i = 0; i < numSimulatedCloths; i++) {
 			sortedClothIndicesNative[addedCloths] = simulatedClothIndices[i];
-			substepsNative[addedCloths++] = cloths[simulatedClothIndices[i]].substeps;
+			substepsNative[addedCloths++] = cloths[simulatedClothIndices[i]].LODs[cloths[simulatedClothIndices[i]].activeLODIndex].substeps;
 		}
 		for (int i = 0; i < numActiveCloths; i++) {
 			if (!cloths[activeClothIndices[i]].isSimulating) {
@@ -1222,8 +1271,6 @@ public class ClothDispatcher : MonoBehaviour
 				UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
 			}
 
-			clothPositionDeltaNative[i] = cloths[clothIndex].transform.position - cloths[clothIndex].positionOnReadback;
-
 			// If cloth is being simulated
 			if (i < numSimulatedCloths) {
 				float dt_step = Time.fixedDeltaTime / substepsNative[i];
@@ -1242,7 +1289,6 @@ public class ClothDispatcher : MonoBehaviour
 				// Map pinned vertices locations
 				for (int j = 0; j < cloths[clothIndex].pinnedVertLocalPos.Count; j++) {
 					vertToPinnedNative[cloths[clothIndex].LODs[cloths[clothIndex].activeLODIndex].pinIndices[j] + activeVertexStartIndexNative[i]] = numPinned++;
-					//pinnedVertNative[numPinned++] = cloths[clothIndex].transform.TransformPoint(cloths[clothIndex].pinnedVertLocalPos[j]);
 				}
 
 				// Count number of iterations to dispatch per simulation step
@@ -1427,23 +1473,7 @@ public class ClothDispatcher : MonoBehaviour
 			}
 		}
 
-		// Offset X's by movement since last active / readback
-		OffsetClothVertices offsetJob = new OffsetClothVertices {
-			x = xNative,
-			clothStartIndex = activeVertexStartIndexNative,
-			clothPositionDelta = clothPositionDeltaNative
-		};
-
-		JobHandle jobHandle = offsetJob.Schedule(numActiveVerts, 64);
-		jobHandle.Complete();
-
 		// Set Mesh Data Buffers
-
-		xBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numActiveVerts);
-		xBuffer.SetData(xNative);
-		clothCompute.SetBuffer(calculateTriangleNormalsKernel, "x", xBuffer);
-		clothCompute.SetBuffer(updateVelocityKernel, "x", xBuffer);
-		clothCompute.SetBuffer(predictPositionKernel, "x", xBuffer);
 
 		normalsBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(normalsNative.Length);
 		normalsBuffer.SetData(normalsNative);
@@ -1498,11 +1528,6 @@ public class ClothDispatcher : MonoBehaviour
 
 		clothCompute.SetInt("numCloths", numActiveCloths);
 		clothCompute.SetFloat("projectionIterations", projectionIterations);
-
-		//clothMaterial.SetBuffer("Vertices", xBuffer);
-		//clothMaterial.SetBuffer("Triangles", trianglesBuffer);
-		//clothMaterial.SetBuffer("Normals", normalsBuffer);
-		//clothMaterial.SetBuffer("UVs", uvBuffer);
 
 		// Set Simulation Buffers
 
@@ -1700,6 +1725,29 @@ public class ClothDispatcher : MonoBehaviour
 		clothCompute.SetBuffer(solveBendingKernel4, "solveBending", solveBendingBuffer);
 		clothCompute.SetBuffer(solveBendingKernel5, "solveBending", solveBendingBuffer);
 		clothCompute.SetBuffer(solveBendingKernel6, "solveBending", solveBendingBuffer);
+
+		NativeArray<float4x4> transformMaticesNative = new NativeArray<float4x4>(numActiveCloths, Allocator.TempJob);
+
+		for (int i = 0; i < numActiveCloths; i++) {
+			int clothIndex = sortedClothIndicesNative[i];
+			transformMaticesNative[i] = cloths[clothIndex].transform.localToWorldMatrix;
+		}
+
+		TransformPointsJob transformJob = new TransformPointsJob {
+			positions = xNative,
+			clothStartIndex = activeVertexStartIndexNative,
+			transformMatrices = transformMaticesNative
+		};
+
+		JobHandle jobHandle = transformJob.Schedule(numActiveVerts, 64);
+		jobHandle.Complete();
+		transformMaticesNative.Dispose();
+
+		xBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numActiveVerts);
+		xBuffer.SetData(xNative);
+		clothCompute.SetBuffer(calculateTriangleNormalsKernel, "x", xBuffer);
+		clothCompute.SetBuffer(updateVelocityKernel, "x", xBuffer);
+		clothCompute.SetBuffer(predictPositionKernel, "x", xBuffer);
 
 		DisposeTempSimulationNatives();
 
@@ -2188,7 +2236,7 @@ public class ClothDispatcher : MonoBehaviour
 				// Update positions for each cloth
 				for (int i = 0; i < numSimulatedCloths; i++) {
 					// Copy specific cloth's data from global arrays
-					if (cloths[sortedClothIndicesNative[i]].isActive) {
+					if (cloths[sortedClothIndicesNative[i]] != null && cloths[sortedClothIndicesNative[i]].isActiveAndEnabled) {
 						unsafe {
 							// Copy Vertices
 							int size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
@@ -2202,22 +2250,7 @@ public class ClothDispatcher : MonoBehaviour
 							destPtr = (IntPtr)((Vector3*)cloths[sortedClothIndicesNative[i]].normals.GetUnsafePtr());
 							UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
 
-							if (cloths[sortedClothIndicesNative[i]].isDoubleSided) {
-								// Copy Vertices
-								//size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
-								//sourcePtr = Marshal.UnsafeAddrOfPinnedArrayElement(x, activeVertexStartIndexNative[i]);
-								//destPtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[sortedClothIndicesNative[i]].x, cloths[sortedClothIndicesNative[i]].numOneSidedVerts);
-								//UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
-
-								// Copy Backside Normals
-								//size = Marshal.SizeOf(typeof(Vector3)) * cloths[sortedClothIndicesNative[i]].numOneSidedVerts;
-								//sourcePtr = (IntPtr)((Vector3*)normalsInverseNative.GetUnsafePtr() + activeVertexStartIndexNative[i]); // Calculate offset for the subset
-								//destPtr = Marshal.UnsafeAddrOfPinnedArrayElement(cloths[sortedClothIndicesNative[i]].normals, cloths[sortedClothIndicesNative[i]].numOneSidedVerts);
-								//UnsafeUtility.MemCpy((void*)destPtr, (void*)sourcePtr, size);
-							}
 						}
-
-						cloths[sortedClothIndicesNative[i]].positionOnReadback = cloths[sortedClothIndicesNative[i]].transform.position;
 					}
 				}
 

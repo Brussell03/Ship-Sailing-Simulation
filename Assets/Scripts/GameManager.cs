@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Rendering.HighDefinition;
 using Random = UnityEngine.Random;
@@ -9,6 +10,8 @@ public class GameManager : MonoBehaviour
 {
 
 	public WaterSurface waterSurface;
+	public CameraController camera;
+	public TextMeshProUGUI debugText;
 	public Vector3 windDirection = Vector3.forward;
 	public float windSpeed = 5f;
 
@@ -27,7 +30,39 @@ public class GameManager : MonoBehaviour
 	// Update is called once per frame
 	void Update()
 	{
-		//Debug.Log(1f / Time.unscaledDeltaTime);
+		
+		if (debugText != null) {
+			string debugString = "";
+
+			if (camera != null) {
+				if (camera.m_CameraMode == 0) {
+					debugString += "\nCamera Mode: Free";
+				} else if (camera.m_CameraMode == 1) {
+					debugString += "\nCamera Mode: Tracking";
+				} else if (camera.m_CameraMode == 2) {
+					debugString += "\nCamera Mode: Focused";
+				}
+
+				if (camera.m_FocusedObject != null) {
+					debugString += "\nTracking Object: " + camera.m_FocusedObject.name;
+				}
+
+				if (camera.m_FocusedShip != null) {
+					Vector3 vel = camera.m_FocusedShip.transform.InverseTransformVector(camera.m_FocusedShip.rb.velocity);
+					debugString += "\nForward Velocity: " + vel.z.ToString("F2");
+					debugString += "\nSide Velocity: " + vel.x.ToString("F2");
+					debugString += "\nTurn Rate: " + (camera.m_FocusedShip.rb.angularVelocity.y * Mathf.Rad2Deg).ToString("F2");
+					debugString += "\nTurn Radius: " + (vel.z / camera.m_FocusedShip.rb.angularVelocity.y).ToString("F2");
+
+					debugString += "\nRudder Angle: " + camera.m_FocusedShip.rudderAngle.ToString("F2");
+					debugString += "\nRigging Angle: " + camera.m_FocusedShip.riggingAngle.ToString("F2");
+					debugString += "\nSpanker Angle: " + camera.m_FocusedShip.spankerAngle.ToString("F2");
+				}
+			}
+
+			debugText.text = debugString.Trim();
+		}
+
 	}
 
 	private void OnDisable() {

@@ -27,6 +27,7 @@ public class ClothSimulation : MonoBehaviour {
 	public bool isDoubleSided = true;
 	public bool applyGravity = true;
 	public bool applyWind = true;
+	public bool oneSidedWind = true;
 
 	[Header("Shape Settings")]
 	public bool liveEdit = false;
@@ -45,7 +46,6 @@ public class ClothSimulation : MonoBehaviour {
 	[Header("Simulation Settings")]
 	[Range(0, 0.0001f)] public float stretchingCompliance = 0f;
 	[Range(0, 10)] public float bendingCompliance = 0f;
-	[Range(3, 30)] public int substeps = 5;
 	[Range(0, 1)] public float damping = 0.03f;
 	[Min(0.0000001f)] public float wScale = 1f;
 	public bool simulateGravity = true;
@@ -129,7 +129,6 @@ public class ClothSimulation : MonoBehaviour {
 
 	// Booleans
 	public bool isInitialized { get; set; } = false;
-	public bool isActive { get; private set; }
 	public bool showShapingGizmos { get; set; } = false;
 	public bool isChangingLOD { get; set; } = false;
 	public bool readbackComplete { get; set; } = false;
@@ -161,7 +160,6 @@ public class ClothSimulation : MonoBehaviour {
 	private Hash pinnedVerticesHash;
 
 	// Vectors
-	public Vector3 positionOnReadback { get; set; }
 	public Vector3 windForce { get; set; }
 	private Vector3 pinnedCenter;
 
@@ -229,7 +227,8 @@ public class ClothSimulation : MonoBehaviour {
 	[Serializable]
 	public struct ClothLOD {
 		[Min(0)] public float maxDistance;
-		[Min(1)] public int subdivisions;
+		[Min(0)] public int subdivisions;
+		[Range(1, 30)] public int substeps;
 
 		public int numRows { get; set; }
 		public int numColumns { get; set; }
@@ -252,7 +251,6 @@ public class ClothSimulation : MonoBehaviour {
 			dispatcher.numClothsChanged = true;
 		}
 
-		isActive = true;
 		liveEdit = false;
 		targetLODIndex = 0;
 		activeLODIndex = 0;
@@ -364,6 +362,7 @@ public class ClothSimulation : MonoBehaviour {
 
 		if (forceRigidbody != null) {
 			if (applyWind && pinnedVertices != null && pinnedVertices.Count > 0 && applyGravity) {
+
 				forceRigidbody.AddForceAtPosition(windForce + mass * Physics.gravity, transform.TransformPoint(pinnedCenter));
 
 				Debug.DrawRay(transform.TransformPoint(pinnedCenter), (windForce + mass * Physics.gravity) / 1000, Color.red);
@@ -472,8 +471,6 @@ public class ClothSimulation : MonoBehaviour {
 		if (v.IsCreated) v.Dispose();
 		if (uv.IsCreated) uv.Dispose();
 		if (textureUV.IsCreated) textureUV.Dispose();
-
-		positionOnReadback = transform.position;
 
 		switch (clothShape) {
 			case ClothShape.Trapezoidal:
@@ -735,9 +732,9 @@ public class ClothSimulation : MonoBehaviour {
 				pinnedVertLocalPos.Add(pinnedVertices[lod.pinListIndices[i]].vector);
 			}
 
-			transform.TransformPoints(x, x);
-
 			InitConstraints(x);
+
+			transform.TransformPoints(x, x);
 		}
 	}
 
@@ -983,9 +980,9 @@ public class ClothSimulation : MonoBehaviour {
 				pinnedVertLocalPos.Add(pinnedVertices[lod.pinListIndices[i]].vector);
 			}
 
-			transform.TransformPoints(x, x);
-
 			InitConstraints(x);
+
+			transform.TransformPoints(x, x);
 		}
 
 		rectIndToTriIndNative.Dispose();
@@ -2716,6 +2713,7 @@ public class ClothSimulation : MonoBehaviour {
 			ClothLOD defaultLOD = new ClothLOD();
 			defaultLOD.subdivisions = 0;
 			defaultLOD.maxDistance = 1000;
+			defaultLOD.substeps = 1;
 
 			LODs.Add(defaultLOD);
 		}
@@ -3133,7 +3131,6 @@ public class ClothSimulation : MonoBehaviour {
 
 	void OnDestroy() {
 
-		isActive = false;
 		if (dispatcher == null) {
 			dispatcher = FindAnyObjectByType<ClothDispatcher>();
 		}
@@ -3157,7 +3154,6 @@ public class ClothSimulation : MonoBehaviour {
 
 	private void OnDisable() {
 
-		isActive = false;
 		if (dispatcher == null) {
 			dispatcher = FindAnyObjectByType<ClothDispatcher>();
 		}
@@ -3185,8 +3181,6 @@ public class ClothSimulation : MonoBehaviour {
 
 			dispatcher.refreshAllQueued = true;
 		}
-
-		isActive = true;
 	}
 
 	private float GetPolygonArea(params Vector2[] vertices) {
@@ -3220,64 +3214,64 @@ public class ClothSimulation : MonoBehaviour {
 				selectedVertices.Clear();
 				InitLODs();
 				Init();
-			}
 
-			if (isInitialized) {
-				if (meshRenderer == null) meshRenderer = GetComponent<MeshRenderer>();
-				if (dispatcher == null) dispatcher = UnityEngine.Object.FindAnyObjectByType<ClothDispatcher>();
+				if (isInitialized) {
+					if (meshRenderer == null) meshRenderer = GetComponent<MeshRenderer>();
+					if (dispatcher == null) dispatcher = UnityEngine.Object.FindAnyObjectByType<ClothDispatcher>();
 
-				if (!uv.IsCreated || !textureUV.IsCreated) return;
+					if (!uv.IsCreated || !textureUV.IsCreated) return;
 
-				// Update UV's
-				if (clothShape == ClothShape.Quadrilateral) {
-					for (int i = 0; i < LODs[maxQualityLODIndex].numRows + 1; i++) {
-						for (int j = 0; j < LODs[maxQualityLODIndex].numColumns + 1; j++) {
-							int index = j + i * (LODs[maxQualityLODIndex].numColumns + 1);
+					// Update UV's
+					if (clothShape == ClothShape.Quadrilateral) {
+						for (int i = 0; i < LODs[maxQualityLODIndex].numRows + 1; i++) {
+							for (int j = 0; j < LODs[maxQualityLODIndex].numColumns + 1; j++) {
+								int index = j + i * (LODs[maxQualityLODIndex].numColumns + 1);
 
-							Vector2 texUV = new Vector2((uv[index].x - textureOffset.x) / textureSize.x, (uv[index].y - textureOffset.y) / textureSize.y);
-							Vector2 rotatedTexUV = new Vector2(texUV.x * Mathf.Cos(Mathf.Deg2Rad * textureRotation) - texUV.y * Mathf.Sin(Mathf.Deg2Rad * textureRotation), texUV.x * Mathf.Sin(Mathf.Deg2Rad * textureRotation) + texUV.y * Mathf.Cos(Mathf.Deg2Rad * textureRotation)) + Vector2.one / 2;
-
-							textureUV[index] = rotatedTexUV;
-
-							if (!Application.isPlaying && isDoubleSided) {
-								textureUV[numOneSidedVerts + index] = rotatedTexUV;
-							}
-						}
-					}
-				} else if (clothShape == ClothShape.Trapezoidal) {
-					int minSubdivision = (int)Mathf.Min(LODs[maxQualityLODIndex].numRows, LODs[maxQualityLODIndex].numColumns);
-					int ind = 0;
-					for (int i = 0; i < LODs[maxQualityLODIndex].numRows + 1; i++) {
-						for (int j = 0; j < LODs[maxQualityLODIndex].numColumns + 1; j++) {
-							if (j >= minSubdivision - i) {
-
-								Vector2 texUV = new Vector2((uv[ind].x - textureOffset.x) / textureSize.x, (uv[ind].y - textureOffset.y) / textureSize.y);
+								Vector2 texUV = new Vector2((uv[index].x - textureOffset.x) / textureSize.x, (uv[index].y - textureOffset.y) / textureSize.y);
 								Vector2 rotatedTexUV = new Vector2(texUV.x * Mathf.Cos(Mathf.Deg2Rad * textureRotation) - texUV.y * Mathf.Sin(Mathf.Deg2Rad * textureRotation), texUV.x * Mathf.Sin(Mathf.Deg2Rad * textureRotation) + texUV.y * Mathf.Cos(Mathf.Deg2Rad * textureRotation)) + Vector2.one / 2;
 
-								textureUV[ind] = rotatedTexUV;
+								textureUV[index] = rotatedTexUV;
 
 								if (!Application.isPlaying && isDoubleSided) {
-									textureUV[numOneSidedVerts + ind] = rotatedTexUV;
+									textureUV[numOneSidedVerts + index] = rotatedTexUV;
 								}
+							}
+						}
+					} else if (clothShape == ClothShape.Trapezoidal) {
+						int minSubdivision = (int)Mathf.Min(LODs[maxQualityLODIndex].numRows, LODs[maxQualityLODIndex].numColumns);
+						int ind = 0;
+						for (int i = 0; i < LODs[maxQualityLODIndex].numRows + 1; i++) {
+							for (int j = 0; j < LODs[maxQualityLODIndex].numColumns + 1; j++) {
+								if (j >= minSubdivision - i) {
 
-								ind++;
+									Vector2 texUV = new Vector2((uv[ind].x - textureOffset.x) / textureSize.x, (uv[ind].y - textureOffset.y) / textureSize.y);
+									Vector2 rotatedTexUV = new Vector2(texUV.x * Mathf.Cos(Mathf.Deg2Rad * textureRotation) - texUV.y * Mathf.Sin(Mathf.Deg2Rad * textureRotation), texUV.x * Mathf.Sin(Mathf.Deg2Rad * textureRotation) + texUV.y * Mathf.Cos(Mathf.Deg2Rad * textureRotation)) + Vector2.one / 2;
+
+									textureUV[ind] = rotatedTexUV;
+
+									if (!Application.isPlaying && isDoubleSided) {
+										textureUV[numOneSidedVerts + ind] = rotatedTexUV;
+									}
+
+									ind++;
+								}
 							}
 						}
 					}
-				}
 
-				meshFilter.sharedMesh.uv = uv.ToArray();
-				meshFilter.sharedMesh.uv2 = textureUV.ToArray();
+					meshFilter.sharedMesh.uv = uv.ToArray();
+					meshFilter.sharedMesh.uv2 = textureUV.ToArray();
 
-				Material mat = new Material(dispatcher.materials[(int)clothMaterial].material);
-				if ((int)clothTexture > 0) {
-					mat.SetInt("_UseTexture", 1);
-					mat.SetTexture("_Texture", dispatcher.textures[(int)clothTexture].texture);
-				} else {
-					mat.SetInt("_UseTexture", 0);
-					mat.SetTexture("_Texture", null);
+					Material mat = new Material(dispatcher.materials[(int)clothMaterial].material);
+					if ((int)clothTexture > 0) {
+						mat.SetInt("_UseTexture", 1);
+						mat.SetTexture("_Texture", dispatcher.textures[(int)clothTexture].texture);
+					} else {
+						mat.SetInt("_UseTexture", 0);
+						mat.SetTexture("_Texture", null);
+					}
+					meshRenderer.sharedMaterial = mat;
 				}
-				meshRenderer.sharedMaterial = mat;
 			}
 		}
 	}
