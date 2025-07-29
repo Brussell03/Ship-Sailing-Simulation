@@ -157,6 +157,7 @@ public class ClothSimulation : MonoBehaviour {
 	public Texture2D alphaMap { get; private set; }
 	public ClothDispatcher dispatcher { get; private set; }
 	private BoxCollider collider;
+	private BuoyantHull hull;
 	private Hash pinnedVerticesHash;
 
 	// Vectors
@@ -246,6 +247,7 @@ public class ClothSimulation : MonoBehaviour {
 		meshRenderer = GetComponent<MeshRenderer>();
 		collider = GetComponent<BoxCollider>();
 		dispatcher = FindAnyObjectByType<ClothDispatcher>();
+		hull = GetComponentInParent<BuoyantHull>();
 
 		if (dispatcher != null ) {
 			dispatcher.numClothsChanged = true;
@@ -365,19 +367,19 @@ public class ClothSimulation : MonoBehaviour {
 
 				forceRigidbody.AddForceAtPosition(windForce + mass * Physics.gravity, transform.TransformPoint(pinnedCenter));
 
-				Debug.DrawRay(transform.TransformPoint(pinnedCenter), (windForce + mass * Physics.gravity) / 1000, Color.red);
+				Debug.DrawRay(transform.TransformPoint(pinnedCenter), (windForce + mass * Physics.gravity) / (hull != null ? hull.debugForceScaling : 1000), Color.red);
 
 			} else {
 				if (applyGravity) {
 					forceRigidbody.AddForceAtPosition(mass * Physics.gravity, transform.TransformPoint(pinnedCenter));
 
-					Debug.DrawRay(transform.TransformPoint(pinnedCenter), (mass * Physics.gravity) / 1000, Color.red);
+					Debug.DrawRay(transform.TransformPoint(pinnedCenter), (mass * Physics.gravity) / (hull != null ? hull.debugForceScaling : 1000), Color.red);
 
 				}
 				if (applyWind && pinnedVertices != null && pinnedVertices.Count > 0) {
 					forceRigidbody.AddForceAtPosition(windForce, transform.TransformPoint(pinnedCenter));
 
-					Debug.DrawRay(transform.TransformPoint(pinnedCenter), (windForce) / 1000, Color.red);
+					Debug.DrawRay(transform.TransformPoint(pinnedCenter), (windForce) / (hull != null ? hull.debugForceScaling : 1000), Color.red);
 				}
 			}
 		}

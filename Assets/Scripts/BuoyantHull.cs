@@ -23,10 +23,10 @@ public class BuoyantHull : MonoBehaviour
 	[SerializeField] private float hullHeight = 1f; // m
 	//[SerializeField] private float dragCoeff = 0.4f; // Deg
 	[SerializeField] private bool debug = false;
-	[SerializeField] private int debugForceScaling = 500000; // Inverse, larger is smaller
+	[SerializeField] public int debugForceScaling = 5000; // Inverse, larger is smaller
 	[SerializeField] private DirectionalDrag dragCoeffs;
-	[SerializeField] private float rudderDragNormalCoeff = 1.28f;
-	[SerializeField] private float rudderDragShearCoeff = 0.2f;
+	[SerializeField] private float normalDragCoeff = 1.28f;
+	[SerializeField] private float tangentialDragCoeff = 0.2f;
 	public List<Transform> rotatingRigging;
 	public Transform spanker;
 
@@ -42,15 +42,19 @@ public class BuoyantHull : MonoBehaviour
 
 	public Rigidbody rb { get; private set; }
 	private WaterSurfaceHeightSearch waterSurfaceHeightSearch;
+	private GameManager gameManager;
 
 	private bool[] isSectionSubmerged;
 	private bool[] isSectionAboveWater;
 	private Vector2[] underwaterSideOutline;
-	private float underwaterSideArea = 0f;
-	private float abovewaterSideArea = 0f;
+	private float underwaterSidePlanarArea = 0f;
+	private float underwaterSideSurfaceArea = 0f;
+	private float abovewaterSidePlanarArea = 0f;
+	private float abovewaterSideSurfaceArea = 0f;
 	private Vector2 underwaterSideCentroid = Vector2.zero;
 	private Vector2 abovewaterSideCentroid = Vector2.zero;
-	private float totalSideArea = 0f;
+	private float totalSidePlanarArea = 0f;
+	private float totalSideSurfaceArea = 0f;
 	private Vector2 totalSideCentroid = Vector2.zero;
 	public float[] sectionTotalArea { get; set; }
 	public Vector2[] sectionSubmergedCenterOfBuoyancy { get; set; }
@@ -85,6 +89,8 @@ public class BuoyantHull : MonoBehaviour
 	void Start()
 	{
 		rb = GetComponent<Rigidbody>();
+		gameManager = FindAnyObjectByType<GameManager>();
+
 		localVelocity = transform.InverseTransformVector(rb.velocity);
 
 		isSectionSubmerged = new bool[hull.hullSections.Count];
@@ -94,8 +100,9 @@ public class BuoyantHull : MonoBehaviour
 		sectionWaterPitchAngles = new float[hull.hullSections.Count];
 		horizontalAirOutline = new Vector2[hull.hullSections.Count * 4];
 		horizontalWaterOutline = new Vector2[hull.hullSections.Count * 4];
-		topHullOutline = new Vector2[hull.hullSections.Count * 4];
 		underwaterSideOutline = new Vector2[hull.hullSections.Count * 4];
+		horizontalHullOutline = new Vector2[hull.hullSections.Count * 4];
+		topHullOutline = new Vector2[hull.hullSections.Count * 4];
 
 		// Looks in scene for existing water surface if it's not set
 		if (waterSurface == null) {
@@ -113,48 +120,14 @@ public class BuoyantHull : MonoBehaviour
 			sectionSubmergedCenterOfBuoyancy[i] = GetSubmergedCenterOfBuoyancy(hull.hullSections[i]);
 		}
 
-		totalSideArea = GetTotalSideAreaAndCentroid(out totalSideCentroid);
+		SetTotalSideAreaAndCentroid();
 
 		rudderDragFactor = GetPolygonArea(hull.rudder.GetUnnormalizedOutline(hullHeight, hullLength)) * 0.5f * waterDensity;
 		rudderOutline = hull.rudder.GetUnnormalizedRotatedPoints(hullWidth, hullHeight, hullLength, rudderAngle);
 		rudderCentroid = hull.rudder.GetCentroid(hullWidth, hullHeight, hullLength, rudderAngle);
 		rudderNormal = Vector3.Cross(rudderOutline[1] - rudderOutline[0], rudderOutline[2] - rudderOutline[0]).normalized;
 
-		#region Construct Horizontal Hull Outlines
-		horizontalHullOutline = new Vector2[hull.hullSections.Count * 4];
-
-		for (int i = 0; i < hull.hullSections.Count; i++) {
-			// Find widest points on the section
-			float maxX = 0.0f;
-
-			for(int j = 0; j < hull.hullSections[i].hullShape.hullPoints.Count; j++) {
-				if (maxX < hull.hullSections[i].hullShape.hullPoints[j].x) {
-					maxX = hull.hullSections[i].hullShape.hullPoints[j].x;
-				}
-			}
-
-			maxX *= hullWidth * hull.hullSections[i].normalizedSectionWidth;
-
-			float forwardPos = (hull.hullSections[i].zPos + hull.hullSections[i].normalizedSectionLength / 2) * hullLength;
-			float backPos = (hull.hullSections[i].zPos - hull.hullSections[i].normalizedSectionLength / 2) * hullLength;
-
-			horizontalHullOutline[i * 2] = new Vector2(-maxX, backPos);
-			horizontalHullOutline[i * 2 + 1] = new Vector2(-maxX, forwardPos);
-			horizontalHullOutline[horizontalHullOutline.Length - (i * 2) - 2] = new Vector2(maxX, forwardPos);
-			horizontalHullOutline[horizontalHullOutline.Length - (i * 2) - 1] = new Vector2(maxX, backPos);
-
-			topHullOutline[i * 2] = new Vector2(-hull.hullSections[i].hullShape.hullPoints[hull.hullSections[i].hullShape.hullPoints.Count - 1].x * hullWidth * hull.hullSections[i].normalizedSectionWidth, backPos);
-			topHullOutline[i * 2 + 1] = new Vector2(-hull.hullSections[i].hullShape.hullPoints[hull.hullSections[i].hullShape.hullPoints.Count - 1].x * hullWidth * hull.hullSections[i].normalizedSectionWidth, forwardPos);
-			topHullOutline[topHullOutline.Length - (i * 2) - 2] = new Vector2(hull.hullSections[i].hullShape.hullPoints[hull.hullSections[i].hullShape.hullPoints.Count - 1].x * hullWidth * hull.hullSections[i].normalizedSectionWidth, forwardPos);
-			topHullOutline[topHullOutline.Length - (i * 2) - 1] = new Vector2(hull.hullSections[i].hullShape.hullPoints[hull.hullSections[i].hullShape.hullPoints.Count - 1].x * hullWidth * hull.hullSections[i].normalizedSectionWidth, backPos);
-		}
-
-		horizontalHullArea = GetPolygonArea(horizontalHullOutline);
-		horizontalHullCentroid = GetPolygonCentroid(horizontalHullOutline, horizontalHullArea);
-
-		topHullArea = GetPolygonArea(topHullOutline);
-		topHullCentroid = GetPolygonCentroid(topHullOutline, topHullArea);
-		#endregion
+		SetHorizontalHullOutlines();
 
 	}
 
@@ -234,17 +207,17 @@ public class BuoyantHull : MonoBehaviour
 				float forwardPos = (hull.hullSections[i].zPos + hull.hullSections[i].normalizedSectionLength / 2) * hullLength;
 				float backPos = (hull.hullSections[i].zPos - hull.hullSections[i].normalizedSectionLength / 2) * hullLength;
 
-				DrawOutline(OutlineTo3D(hullPoints, Vector3.forward, forwardPos), i % 2 == 0 ? Color.white : Color.gray);
-				DrawOutline(OutlineTo3D(hullPoints, Vector3.forward, backPos), i % 2 == 0 ? Color.white : Color.gray);
+				DrawOutline(OutlineTo3D(hullPoints, Vector3.forward, forwardPos), i % 2 == 0 ? Color.white : Color.gray, obscure: true);
+				DrawOutline(OutlineTo3D(hullPoints, Vector3.forward, backPos), i % 2 == 0 ? Color.white : Color.gray, obscure: true);
 
 				for (int j = 0; j < hullPoints.Length; j++) {
-					Debug.DrawLine(transform.TransformPoint(new Vector3(hullPoints[j].x, hullPoints[j].y, forwardPos)), transform.TransformPoint(new Vector3(hullPoints[j].x, hullPoints[j].y, backPos)), i % 2 == 0 ? Color.white : Color.gray, 0, false);
+					Debug.DrawLine(transform.TransformPoint(new Vector3(hullPoints[j].x, hullPoints[j].y, forwardPos)), transform.TransformPoint(new Vector3(hullPoints[j].x, hullPoints[j].y, backPos)), i % 2 == 0 ? Color.white : Color.gray, 0, true);
 				}
 			}
 
 			Vector3[] transformedRudderPoints = hull.rudder.GetUnnormalizedRotatedPoints(hullWidth, hullHeight, hullLength, rudderAngle);
 			transform.TransformPoints(transformedRudderPoints);
-			DrawOutline(transformedRudderPoints, Color.white);
+			DrawOutline(transformedRudderPoints, Color.white, obscure: true);
 
 			if (!isFullyAboveWater && !isFullySubmerged) {
 
@@ -254,13 +227,13 @@ public class BuoyantHull : MonoBehaviour
 				}
 				transform.TransformPoints(horizontalWaterOutline3D);
 
-				DrawOutline(horizontalWaterOutline3D, Color.blue); // Avg Water Line
+				DrawOutline(horizontalWaterOutline3D, Color.blue, obscure: true); // Avg Water Line
 			}
 			
-			DrawOutline(OutlineTo3D(horizontalHullOutline, Vector3.up, hullHeight / 2.0f), Color.blue); // Water
-			DrawOutline(OutlineTo3D(horizontalAirOutline, Vector3.up, hullHeight / 2.0f), Color.white); // Air
+			DrawOutline(OutlineTo3D(horizontalHullOutline, Vector3.up, hullHeight / 2.0f), Color.blue, obscure: true); // Water
+			DrawOutline(OutlineTo3D(horizontalAirOutline, Vector3.up, hullHeight / 2.0f), Color.white, obscure: true); // Air
 
-			DrawOutline(OutlineTo3D(underwaterSideOutline, Vector3.right, 0), Color.blue); // Underwater Side Outline
+			DrawOutline(OutlineTo3D(underwaterSideOutline, Vector3.right, 0), Color.blue, obscure: true); // Underwater Side Outline
 		}
 
 		#endregion
@@ -482,29 +455,34 @@ public class BuoyantHull : MonoBehaviour
 
 	private void ApplyDrag(Vector3 relativeCurrentDirection, float currentSpeed) {
 
-		Vector3 kineticEnergy = 0.5f * new Vector3(localVelocity.x * localVelocity.x, localVelocity.y * localVelocity.y, localVelocity.z * localVelocity.z);
+		Vector3 relativeWindDirection = transform.InverseTransformDirection(gameManager.windDirection);
+		Vector3 windAdjustedVelocity = relativeWindDirection * gameManager.windSpeed / 2 - localVelocity;
+		Vector3 kineticEnergyAir = 0.5f * new Vector3(windAdjustedVelocity.x * windAdjustedVelocity.x, windAdjustedVelocity.y * windAdjustedVelocity.y, windAdjustedVelocity.z * windAdjustedVelocity.z);
+
 		Vector3 currentAdjustedVelocity = relativeCurrentDirection * currentSpeed - localVelocity;
 		Vector3 kineticEnergyWater = 0.5f * waterDensity * new Vector3(currentAdjustedVelocity.x * currentAdjustedVelocity.x, currentAdjustedVelocity.y * currentAdjustedVelocity.y, currentAdjustedVelocity.z * currentAdjustedVelocity.z);
 
 		#region Linear Drag in X
 		// Drag in local x direction (left-right)
-		if (localVelocity.x != 0 && abovewaterSideArea > 0) {
+		if (windAdjustedVelocity.x != 0 && abovewaterSidePlanarArea > 0) {
 
-			Vector3 dragForce = kineticEnergy.x * airDensity * dragCoeffs.linearX * abovewaterSideArea * transform.right;
+			Vector3 dragForce = kineticEnergyAir.x * airDensity * dragCoeffs.linearX * abovewaterSidePlanarArea * transform.right;
 			Vector3 dragCentroid = new Vector3(-hullWidth / 2f, abovewaterSideCentroid.y, abovewaterSideCentroid.x);
 
-			if (localVelocity.x > 0) {
+			if (windAdjustedVelocity.x < 0) {
 				dragForce *= -1;
 				dragCentroid.x *= -1;
 			}
 
-			rb.AddForceAtPosition(dragForce, transform.TransformPoint(dragCentroid), ForceMode.Force);
-			if (debug) Debug.DrawRay(transform.TransformPoint(dragCentroid), dragForce / debugForceScaling, Color.gray);
+			dragCentroid = transform.TransformPoint(dragCentroid);
+
+			rb.AddForceAtPosition(dragForce, dragCentroid, ForceMode.Force);
+			if (debug) Debug.DrawRay(dragCentroid, dragForce / debugForceScaling, Color.green, 0, depthTest: false);
 		}
 
-		if (currentAdjustedVelocity.x != 0 && underwaterSideArea > 0) {
+		if (currentAdjustedVelocity.x != 0 && underwaterSidePlanarArea > 0) {
 
-			Vector3 dragForce = kineticEnergyWater.x * dragCoeffs.linearX * underwaterSideArea * transform.right;
+			Vector3 dragForce = kineticEnergyWater.x * dragCoeffs.linearX * underwaterSidePlanarArea * transform.right;
 			Vector3 dragCentroid = new Vector3(-hullWidth / 2f, underwaterSideCentroid.y, underwaterSideCentroid.x);
 
 			if (currentAdjustedVelocity.x < 0) {
@@ -512,8 +490,10 @@ public class BuoyantHull : MonoBehaviour
 				dragCentroid.x *= -1;
 			}
 
-			rb.AddForceAtPosition(dragForce, transform.TransformPoint(dragCentroid), ForceMode.Force);
-			if (debug) Debug.DrawRay(transform.TransformPoint(dragCentroid), dragForce / debugForceScaling, Color.gray);
+			dragCentroid = transform.TransformPoint(dragCentroid);
+
+			rb.AddForceAtPosition(dragForce, dragCentroid, ForceMode.Force);
+			if (debug) Debug.DrawRay(dragCentroid, dragForce / debugForceScaling, Color.green, 0, depthTest: false);
 
 		}
 		#endregion
@@ -539,21 +519,21 @@ public class BuoyantHull : MonoBehaviour
 
 				if (topAirArea > 0) {
 
-					float dragForce = kineticEnergy.y * airDensity * dragCoeffs.linearY * topAirArea;
-					Vector3 dragCentroid = new Vector3(topAirCentroid.x, hullHeight / 2f, topAirCentroid.y);
+					float dragForce = kineticEnergyAir.y * airDensity * dragCoeffs.linearY * topAirArea;
+					Vector3 dragCentroid = transform.TransformPoint(new Vector3(topAirCentroid.x, hullHeight / 2f, topAirCentroid.y));
 
-					rb.AddForceAtPosition(dragForce * -transform.up, transform.TransformPoint(dragCentroid), ForceMode.Force);
-					if (debug) Debug.DrawRay(transform.TransformPoint(dragCentroid), -transform.up * dragForce / debugForceScaling, Color.gray);
+					rb.AddForceAtPosition(dragForce * -transform.up, dragCentroid, ForceMode.Force);
+					if (debug) Debug.DrawRay(dragCentroid, -transform.up * dragForce / debugForceScaling, Color.green, 0, depthTest: false);
 
 				}
 
 				if (topWaterArea > 0) {
 
-					float dragForce = kineticEnergy.y * waterDensity * dragCoeffs.linearY * topWaterArea;
-					Vector3 dragCentroid = new Vector3(topWaterCentroid.x, hullHeight / 2f, topWaterCentroid.y);
+					float dragForce = kineticEnergyWater.y * dragCoeffs.linearY * topWaterArea;
+					Vector3 dragCentroid = transform.TransformPoint(new Vector3(topWaterCentroid.x, hullHeight / 2f, topWaterCentroid.y));
 
-					rb.AddForceAtPosition(dragForce * -transform.up, transform.TransformPoint(dragCentroid), ForceMode.Force);
-					if (debug) Debug.DrawRay(transform.TransformPoint(dragCentroid), -transform.up * dragForce / debugForceScaling, Color.gray);
+					rb.AddForceAtPosition(dragForce * -transform.up, dragCentroid, ForceMode.Force);
+					if (debug) Debug.DrawRay(dragCentroid, -transform.up * dragForce / debugForceScaling, Color.green, 0, depthTest: false);
 
 				}
 
@@ -575,21 +555,21 @@ public class BuoyantHull : MonoBehaviour
 
 				if (bottomWaterArea > 0) {
 
-					float dragForce = kineticEnergy.y * airDensity * dragCoeffs.linearY * bottomWaterArea;
-					Vector3 dragCentroid = new Vector3(bottomWaterCentroid.x, -hullHeight / 2f, bottomWaterCentroid.y);
+					float dragForce = kineticEnergyWater.y * dragCoeffs.linearY * bottomWaterArea;
+					Vector3 dragCentroid = transform.TransformPoint(new Vector3(bottomWaterCentroid.x, -hullHeight / 2f, bottomWaterCentroid.y));
 
-					rb.AddForceAtPosition(dragForce * transform.up, transform.TransformPoint(dragCentroid), ForceMode.Force);
-					if (debug) Debug.DrawRay(transform.TransformPoint(dragCentroid), transform.up * dragForce / debugForceScaling, Color.gray);
+					rb.AddForceAtPosition(dragForce * transform.up, dragCentroid, ForceMode.Force);
+					if (debug) Debug.DrawRay(dragCentroid, transform.up * dragForce / debugForceScaling, Color.green, 0, depthTest: false);
 
 				}
 
 				if (bottomAirArea > 0) {
 
-					float dragForce = kineticEnergy.y * waterDensity * dragCoeffs.linearY * bottomAirArea;
-					Vector3 dragCentroid = new Vector3(bottomAirCentroid.x, -hullHeight / 2f, bottomAirCentroid.y);
+					float dragForce = kineticEnergyAir.y * airDensity * dragCoeffs.linearY * bottomAirArea;
+					Vector3 dragCentroid = transform.TransformPoint(new Vector3(bottomAirCentroid.x, -hullHeight / 2f, bottomAirCentroid.y));
 
-					rb.AddForceAtPosition(dragForce * transform.up, transform.TransformPoint(dragCentroid), ForceMode.Force);
-					if (debug) Debug.DrawRay(transform.TransformPoint(dragCentroid), transform.up * dragForce / debugForceScaling, Color.gray);
+					rb.AddForceAtPosition(dragForce * transform.up, dragCentroid, ForceMode.Force);
+					if (debug) Debug.DrawRay(dragCentroid, transform.up * dragForce / debugForceScaling, Color.green, 0, depthTest: false);
 
 				}
 			}
@@ -598,33 +578,74 @@ public class BuoyantHull : MonoBehaviour
 
 		#region Linear Drag in Z
 		// Drag in local z direction (forward-back)
-		if (localVelocity.z != 0 && abovewaterLongitudinalArea > 0) {
+		if (windAdjustedVelocity.z != 0.0f) {
+			if (abovewaterLongitudinalArea > 0.0f) {
+				Vector3 dragForce = kineticEnergyAir.z * airDensity * dragCoeffs.linearZ * abovewaterLongitudinalArea * transform.forward;
+				Vector3 dragCentroid = new Vector3(abovewaterLongitudinalCentroid.x, abovewaterLongitudinalCentroid.y, -hullLength / 2.0f);
 
-			Vector3 dragForce = kineticEnergy.z * airDensity * dragCoeffs.linearZ * abovewaterLongitudinalArea * transform.forward;
-			Vector3 dragCentroid = new Vector3(abovewaterLongitudinalCentroid.x, abovewaterLongitudinalCentroid.y, -hullLength / 2f);
+				if (windAdjustedVelocity.z < 0.0f) {
+					dragForce *= -1;
+					dragCentroid.z *= -1;
+				}
 
-			if (localVelocity.z > 0) {
-				dragForce *= -1;
-				dragCentroid.z *= -1;
+				dragCentroid = transform.TransformPoint(dragCentroid);
+
+				rb.AddForceAtPosition(dragForce, dragCentroid, ForceMode.Force);
+				if (debug) Debug.DrawRay(dragCentroid, dragForce / debugForceScaling, Color.green, 0, depthTest: false);
+			}
+			
+			if (abovewaterSideSurfaceArea > 0.0f) {
+				Vector3 dragForce = kineticEnergyAir.z * airDensity * tangentialDragCoeff * abovewaterSideSurfaceArea * transform.forward;
+				Vector3 dragCentroid = transform.TransformPoint(new Vector3(0.0f, abovewaterSideCentroid.y, abovewaterSideCentroid.x));
+
+				if (windAdjustedVelocity.z < 0.0f) {
+					dragForce *= -1;
+				}
+
+				rb.AddForceAtPosition(dragForce, dragCentroid, ForceMode.Force);
+				if (debug) Debug.DrawRay(dragCentroid, dragForce / debugForceScaling, Color.green, 0, depthTest: false);
 			}
 
-			rb.AddForceAtPosition(dragForce, transform.TransformPoint(dragCentroid), ForceMode.Force);
-			if (debug) Debug.DrawRay(transform.TransformPoint(dragCentroid), dragForce / debugForceScaling, Color.gray);
+			if (topHullArea > 0.0f) {
+				Vector3 dragForce = kineticEnergyAir.z * airDensity * tangentialDragCoeff * topHullArea * transform.forward;
+				Vector3 dragCentroid = transform.TransformPoint(topHullCentroid.x, hullHeight / 2.0f, topHullCentroid.y);
+
+				if (windAdjustedVelocity.z < 0.0f) {
+					dragForce *= -1;
+				}
+
+				rb.AddForceAtPosition(dragForce, dragCentroid, ForceMode.Force);
+				if (debug) Debug.DrawRay(dragCentroid, dragForce / debugForceScaling, Color.green, 0, depthTest: false);
+			}
 		}
 
-		if (currentAdjustedVelocity.z != 0 && underwaterLongitudinalArea > 0) {
+		if (currentAdjustedVelocity.z != 0.0f) {
+			if (underwaterLongitudinalArea > 0.0f) {
+				Vector3 dragForce = kineticEnergyWater.z * dragCoeffs.linearZ * underwaterLongitudinalArea * transform.forward;
+				Vector3 dragCentroid = new Vector3(underwaterLongitudinalCentroid.x, underwaterLongitudinalCentroid.y, -hullLength / 2f);
 
-			Vector3 dragForce = kineticEnergyWater.z * dragCoeffs.linearZ * underwaterLongitudinalArea * transform.forward;
-			Vector3 dragCentroid = new Vector3(underwaterLongitudinalCentroid.x, underwaterLongitudinalCentroid.y, -hullLength / 2f);
+				if (currentAdjustedVelocity.z < 0.0f) {
+					dragForce *= -1;
+					dragCentroid.z *= -1;
+				}
 
-			if (currentAdjustedVelocity.z < 0) {
-				dragForce *= -1;
-				dragCentroid.z *= -1;
+				dragCentroid = transform.TransformPoint(dragCentroid);
+
+				rb.AddForceAtPosition(dragForce, dragCentroid, ForceMode.Force);
+				if (debug) Debug.DrawRay(dragCentroid, dragForce / debugForceScaling, Color.green, 0, depthTest: false);
 			}
 
-			rb.AddForceAtPosition(dragForce, transform.TransformPoint(dragCentroid), ForceMode.Force);
-			if (debug) Debug.DrawRay(transform.TransformPoint(dragCentroid), dragForce / debugForceScaling, Color.gray);
+			if (underwaterSideSurfaceArea > 0.0f) {
+				Vector3 dragForce = kineticEnergyWater.z * tangentialDragCoeff * underwaterSideSurfaceArea * transform.forward;
+				Vector3 dragCentroid = transform.TransformPoint(new Vector3(0.0f, underwaterSideCentroid.y, underwaterSideCentroid.x));
 
+				if (currentAdjustedVelocity.z < 0.0f) {
+					dragForce *= -1;
+				}
+
+				rb.AddForceAtPosition(dragForce, dragCentroid, ForceMode.Force);
+				if (debug) Debug.DrawRay(dragCentroid, dragForce / debugForceScaling, Color.green, 0, depthTest: false);
+			}
 		}
 		#endregion
 
@@ -666,9 +687,9 @@ public class BuoyantHull : MonoBehaviour
 			Vector3 rudderShearNormal = (currentAdjustedVelocity - waterToRudderNormal * newRudderNormal).normalized;
 			float waterRudderShear = Vector3.Dot(currentAdjustedVelocity, rudderShearNormal);
 
-			Vector3 forceNormal = rudderDragNormalCoeff * waterToRudderNormal * waterToRudderNormal * newRudderNormal;
-			forceNormal.z /= rudderDragNormalCoeff;
-			Vector3 forceShear = rudderDragShearCoeff * waterRudderShear * waterRudderShear * rudderShearNormal;
+			Vector3 forceNormal = normalDragCoeff * waterToRudderNormal * waterToRudderNormal * newRudderNormal;
+			forceNormal.z /= normalDragCoeff;
+			Vector3 forceShear = tangentialDragCoeff * waterRudderShear * waterRudderShear * rudderShearNormal;
 
 			Vector3 rudderForce = transform.TransformPoint(rudderDragFactor * (forceNormal + forceShear));
 			rb.AddForceAtPosition(rudderForce, transform.TransformPoint(rudderCentroid), ForceMode.Force);
@@ -1056,7 +1077,7 @@ public class BuoyantHull : MonoBehaviour
 				horizontalAirOutline[horizontalAirOutline.Length - sectionIndex * 2 - 1] = new Vector2(0, horizontalHullOutline[sectionIndex * 2].y);
 			}
 
-			return 1;
+			return sectionTotalArea[sectionIndex];
 		}
 
 		// Redefine hull positions by setting a new origin at lowest point and flipping the left sides x-positions
@@ -1503,9 +1524,11 @@ public class BuoyantHull : MonoBehaviour
 			return centroid;
 		}
 
-		for (int i = 0; i < vertices.Length - 1; i++) {
-			centroid.x += (vertices[i].x + vertices[i + 1].x) * (vertices[i].x * vertices[i + 1].y - vertices[i + 1].x * vertices[i].y);
-			centroid.y += (vertices[i].y + vertices[i + 1].y) * (vertices[i].x * vertices[i + 1].y - vertices[i + 1].x * vertices[i].y);
+		for (int i = 0; i < vertices.Length; i++) {
+			int nextInd = (i + 1) % vertices.Length;
+
+			centroid.x += (vertices[i].x + vertices[nextInd].x) * (vertices[i].x * vertices[nextInd].y - vertices[nextInd].x * vertices[i].y);
+			centroid.y += (vertices[i].y + vertices[nextInd].y) * (vertices[i].x * vertices[nextInd].y - vertices[nextInd].x * vertices[i].y);
 		}
 
 		centroid.x /= 6 * area;
@@ -1522,9 +1545,11 @@ public class BuoyantHull : MonoBehaviour
 			return centroid;
 		}
 
-		for (int i = 0; i < vertices.Length - 1; i++) {
-			centroid.x += (vertices[i].x + vertices[i + 1].x) * (vertices[i].x * vertices[i + 1].y - vertices[i + 1].x * vertices[i].y);
-			centroid.y += (vertices[i].y + vertices[i + 1].y) * (vertices[i].x * vertices[i + 1].y - vertices[i + 1].x * vertices[i].y);
+		for (int i = 0; i < vertices.Length; i++) {
+			int nextInd = (i + 1) % vertices.Length;
+
+			centroid.x += (vertices[i].x + vertices[nextInd].x) * (vertices[i].x * vertices[nextInd].y - vertices[nextInd].x * vertices[i].y);
+			centroid.y += (vertices[i].y + vertices[nextInd].y) * (vertices[i].x * vertices[nextInd].y - vertices[nextInd].x * vertices[i].y);
 		}
 
 		centroid.x /= 6 * area;
@@ -1548,10 +1573,9 @@ public class BuoyantHull : MonoBehaviour
 		float totalArea = 0f;
 		float yOffset = hullSection.topY * hullHeight - hullSection.hullShape.hullPoints[hullSection.hullShape.hullPoints.Count - 1].y * hullSection.normalizedSectionHeight * hullHeight;
 
-		int numPoints = hullSection.hullShape.hullPoints.Count;
-		for (int i = 0; i < numPoints; i++) {
+		for (int i = 0; i < hullSection.hullShape.hullPoints.Count - 1; i++) {
 			// Area of left and right side of section
-			float doubleSectionArea = ((hullSection.hullShape.hullPoints[i].x * hullSection.normalizedSectionWidth * hullWidth) + (hullSection.hullShape.hullPoints[(i + 1) % numPoints].x * hullSection.normalizedSectionWidth * hullWidth)) * ((hullSection.hullShape.hullPoints[(i + 1) % numPoints].y * hullSection.normalizedSectionHeight * hullHeight + yOffset) - (hullSection.hullShape.hullPoints[i].y * hullSection.normalizedSectionHeight * hullHeight + yOffset));
+			float doubleSectionArea = ((hullSection.hullShape.hullPoints[i].x * hullSection.normalizedSectionWidth * hullWidth) + (hullSection.hullShape.hullPoints[i + 1].x * hullSection.normalizedSectionWidth * hullWidth)) * ((hullSection.hullShape.hullPoints[i + 1].y * hullSection.normalizedSectionHeight * hullHeight + yOffset) - (hullSection.hullShape.hullPoints[i].y * hullSection.normalizedSectionHeight * hullHeight + yOffset));
 			totalArea += doubleSectionArea;
 		}
 
@@ -1573,30 +1597,6 @@ public class BuoyantHull : MonoBehaviour
 
 		return center / area;
 	}
-
-	/*public Vector2[] GetUnnormalizedHullPoints(HullSection hullSection)
-	{
-		Vector2[] unnormalizedPoints = new Vector2[hullSection.hullShape.hullPoints.Count];
-
-		float yOffset = hullSection.topY * hullHeight - hullSection.hullShape.hullPoints[unnormalizedPoints.Length - 1].y * hullSection.normalizedSectionHeight * hullHeight;
-		for (int i = 0; i < unnormalizedPoints.Length; i++)
-		{
-			unnormalizedPoints[i] = new Vector2(hullSection.hullShape.hullPoints[i].x * hullSection.normalizedSectionWidth * hullWidth, hullSection.hullShape.hullPoints[i].y * hullSection.normalizedSectionHeight * hullHeight + yOffset);
-		}
-
-		return unnormalizedPoints;
-	}*/
-
-	/*public Vector2[] GetLeftHullPoints(int sectionIndex) {
-		Vector2[] flippedPoints = new Vector2[hullSectionShape.Length];
-
-		// Flipping about the y-axis
-		for (int i = 0; i < flippedPoints.Length; i++) {
-			flippedPoints[i] = (new Vector2(-hullSectionShape[i].x, hullSectionShape[i].y));
-		}
-
-		return flippedPoints;
-	}*/
 
 	private Vector2[] GetRotatedHullPoints(Vector2[] fixedHullPoints, float angle) {
 		Vector2[] rotatedPoints = new Vector2[fixedHullPoints.Length];
@@ -1620,37 +1620,41 @@ public class BuoyantHull : MonoBehaviour
 	private void UpdateSideProperties(float largestSubmergedHullSectionArea, Vector2 largestSubmergedHullSectionCentroid, int largestSubmergedHullSectionIndex) {
 
 		if (isFullyAboveWater) { // If every section is above the water, then return
-			underwaterSideArea = 0;
-			abovewaterSideArea = totalSideArea;
+			underwaterSidePlanarArea = 0;
+			underwaterSideSurfaceArea = 0;
+			abovewaterSidePlanarArea = totalSidePlanarArea;
+			abovewaterSideSurfaceArea = totalSideSurfaceArea;
 			abovewaterSideCentroid = totalSideCentroid;
 			return;
 		}
 
-
-		int count = 0;
+		underwaterSideSurfaceArea = 0;
 
 		for (int i = 0; i < hull.hullSections.Count; i++) {
 
 			float forwardPos = (hull.hullSections[i].zPos + hull.hullSections[i].normalizedSectionLength / 2) * hullLength;
 			float backPos = (hull.hullSections[i].zPos - hull.hullSections[i].normalizedSectionLength / 2) * hullLength;
+			float bottomPos = hull.hullSections[i].bottomY * hullHeight;
+			float topPos = hull.hullSections[i].topY * hullHeight;
 
-			underwaterSideOutline[i * 2] = new Vector2(backPos, hull.hullSections[i].bottomY * hullHeight);
-			underwaterSideOutline[i * 2 + 1] = new Vector2(forwardPos, hull.hullSections[i].bottomY * hullHeight);
+			underwaterSideOutline[i * 2] = new Vector2(backPos, bottomPos);
+			underwaterSideOutline[i * 2 + 1] = new Vector2(forwardPos, bottomPos);
 
 			float sectionWaterLineCentered = sectionWaterLines[i] - hullHeight / 2f;
-			if (hull.hullSections[i].bottomY * hullHeight < sectionWaterLineCentered) { // Section is in the water
+			if (bottomPos < sectionWaterLineCentered) { // Section is in the water
 
-				if (hull.hullSections[i].topY * hullHeight <= sectionWaterLineCentered) { // Section is fully submerged
+				if (topPos <= sectionWaterLineCentered) { // Section is fully submerged
 
-					underwaterSideOutline[underwaterSideOutline.Length - i * 2 - 2] = new Vector2(forwardPos, hull.hullSections[i].topY * hullHeight);
-					underwaterSideOutline[underwaterSideOutline.Length - i * 2 - 1] = new Vector2(backPos, hull.hullSections[i].topY * hullHeight);
+					underwaterSideOutline[underwaterSideOutline.Length - i * 2 - 2] = new Vector2(forwardPos, topPos);
+					underwaterSideOutline[underwaterSideOutline.Length - i * 2 - 1] = new Vector2(backPos, topPos);
 				} else { // Section is partially submerged
 
 					underwaterSideOutline[underwaterSideOutline.Length - i * 2 - 2] = new Vector2(forwardPos, sectionWaterLineCentered);
 					underwaterSideOutline[underwaterSideOutline.Length - i * 2 - 1] = new Vector2(backPos, sectionWaterLineCentered);
 				}
 
-				count++;
+				underwaterSideSurfaceArea += GetRectangleArea3D(underwaterSideOutline[i * 2], underwaterSideOutline[i * 2 + 1], underwaterSideOutline[underwaterSideOutline.Length - (i * 2) - 2], underwaterSideOutline[underwaterSideOutline.Length - (i * 2) - 1]);
+
 			} else {
 
 				underwaterSideOutline[underwaterSideOutline.Length - i * 2 - 2] = underwaterSideOutline[i * 2];
@@ -1658,37 +1662,14 @@ public class BuoyantHull : MonoBehaviour
 			}
 		}
 
-		/*float underMinY = hullHeight / 2f;
-		float underMinX = hullLength / 2f;
-		for (int i = 0; i < underwaterSideOutline.Length; i++) {
-			if (underwaterSideOutline[i].y < underMinY) {
-				underMinY = underwaterSideOutline[i].y;
-			}
-			if (underwaterSideOutline[i].x < underMinX) {
-				underMinX = underwaterSideOutline[i].x;
-			}
-		}
+		underwaterSideSurfaceArea *= 2.0f;
+		underwaterSidePlanarArea = GetPolygonArea(underwaterSideOutline);
+		underwaterSideCentroid = GetPolygonCentroid(underwaterSideOutline, underwaterSidePlanarArea);
 
-		for (int i = 0; i < underwaterSideOutline.Count; i++) {
-			underwaterSideOutline[i] -= new Vector2(underMinX, underMinY);
-		}*/
+		abovewaterSidePlanarArea = totalSidePlanarArea - underwaterSidePlanarArea;
+		abovewaterSideSurfaceArea = totalSideSurfaceArea - underwaterSideSurfaceArea;
 
-		underwaterSideArea = GetPolygonArea(underwaterSideOutline);
-		abovewaterSideArea = totalSideArea - underwaterSideArea;
-
-		underwaterSideCentroid = GetPolygonCentroid(underwaterSideOutline, underwaterSideArea);
-		//underwaterSideCentroid += new Vector2(underMinX, underMinY);
-
-		// --- Revert for drawing outline
-		/*for (int i = 0; i < underwaterSideOutline.Count; i++) {
-			underwaterSideOutline[i] += new Vector2(underMinX, underMinY);
-		}*/
-		// ---
-
-		//abovewaterSideCentroid = GetPolygonCentroid(abovewaterSideOutline.ToArray(), abovewaterSideArea);
-		//abovewaterSideCentroid += new Vector2(aboveMinX, aboveMinY);
-
-		abovewaterSideCentroid = (totalSideCentroid * totalSideArea - underwaterSideCentroid * underwaterSideArea) / abovewaterSideArea;
+		abovewaterSideCentroid = (totalSideCentroid * totalSidePlanarArea - underwaterSideCentroid * underwaterSidePlanarArea) / abovewaterSidePlanarArea;
 
 		// Longitudinal Ends
 
@@ -1699,47 +1680,67 @@ public class BuoyantHull : MonoBehaviour
 		
 	}
 
-	private float GetTotalSideAreaAndCentroid(out Vector2 sideCentroid) {
-		float sideArea = 0f;
+	private void SetHorizontalHullOutlines() {
+		for (int i = 0; i < hull.hullSections.Count; i++) {
+			// Find widest points on the section
+			float maxX = 0.0f;
+
+			for (int j = 0; j < hull.hullSections[i].hullShape.hullPoints.Count; j++) {
+				if (maxX < hull.hullSections[i].hullShape.hullPoints[j].x) {
+					maxX = hull.hullSections[i].hullShape.hullPoints[j].x;
+				}
+			}
+
+			maxX *= hullWidth * hull.hullSections[i].normalizedSectionWidth;
+
+			float forwardPos = (hull.hullSections[i].zPos + hull.hullSections[i].normalizedSectionLength / 2) * hullLength;
+			float backPos = (hull.hullSections[i].zPos - hull.hullSections[i].normalizedSectionLength / 2) * hullLength;
+
+			horizontalHullOutline[i * 2] = new Vector2(-maxX, backPos);
+			horizontalHullOutline[i * 2 + 1] = new Vector2(-maxX, forwardPos);
+			horizontalHullOutline[horizontalHullOutline.Length - (i * 2) - 2] = new Vector2(maxX, forwardPos);
+			horizontalHullOutline[horizontalHullOutline.Length - (i * 2) - 1] = new Vector2(maxX, backPos);
+
+			topHullOutline[i * 2] = new Vector2(-hull.hullSections[i].hullShape.hullPoints[hull.hullSections[i].hullShape.hullPoints.Count - 1].x * hullWidth * hull.hullSections[i].normalizedSectionWidth, backPos);
+			topHullOutline[i * 2 + 1] = new Vector2(-hull.hullSections[i].hullShape.hullPoints[hull.hullSections[i].hullShape.hullPoints.Count - 1].x * hullWidth * hull.hullSections[i].normalizedSectionWidth, forwardPos);
+			topHullOutline[topHullOutline.Length - (i * 2) - 2] = new Vector2(hull.hullSections[i].hullShape.hullPoints[hull.hullSections[i].hullShape.hullPoints.Count - 1].x * hullWidth * hull.hullSections[i].normalizedSectionWidth, forwardPos);
+			topHullOutline[topHullOutline.Length - (i * 2) - 1] = new Vector2(hull.hullSections[i].hullShape.hullPoints[hull.hullSections[i].hullShape.hullPoints.Count - 1].x * hullWidth * hull.hullSections[i].normalizedSectionWidth, backPos);
+		}
+
+		horizontalHullArea = GetPolygonArea(horizontalHullOutline);
+		horizontalHullCentroid = GetPolygonCentroid(horizontalHullOutline, horizontalHullArea);
+
+		topHullArea = GetPolygonArea(topHullOutline);
+		topHullCentroid = GetPolygonCentroid(topHullOutline, topHullArea);
+	}
+
+	private void SetTotalSideAreaAndCentroid() {
+		totalSidePlanarArea = 0f;
+		totalSideSurfaceArea = 0f;
 		Vector2[] sideOutline = new Vector2[hull.hullSections.Count * 4];
 
 		for (int i = 0; i < hull.hullSections.Count; i++) {
 			float forwardPos = (hull.hullSections[i].zPos + hull.hullSections[i].normalizedSectionLength / 2) * hullLength;
 			float backPos = (hull.hullSections[i].zPos - hull.hullSections[i].normalizedSectionLength / 2) * hullLength;
+			float bottomPos = hull.hullSections[i].bottomY * hullHeight;
+			float topPos = hull.hullSections[i].topY * hullHeight;
 
-			sideOutline[i * 2] = new Vector2(backPos, hull.hullSections[i].bottomY * hullHeight);
-			sideOutline[i * 2 + 1] = new Vector2(forwardPos, hull.hullSections[i].bottomY * hullHeight);
-			sideOutline[sideOutline.Length - (i * 2) - 2] = new Vector2(forwardPos, hull.hullSections[i].topY * hullHeight);
-			sideOutline[sideOutline.Length - (i * 2) - 1] = new Vector2(backPos, hull.hullSections[i].topY * hullHeight);
+			sideOutline[i * 2] = new Vector2(backPos, bottomPos);
+			sideOutline[i * 2 + 1] = new Vector2(forwardPos, bottomPos);
+			sideOutline[sideOutline.Length - (i * 2) - 2] = new Vector2(forwardPos, topPos);
+			sideOutline[sideOutline.Length - (i * 2) - 1] = new Vector2(backPos, topPos);
+
+			totalSideSurfaceArea += GetRectangleArea3D(sideOutline[i * 2], sideOutline[i * 2 + 1], sideOutline[sideOutline.Length - (i * 2) - 2], sideOutline[sideOutline.Length - (i * 2) - 1]);
 		}
 
-		/*float minY = hullHeight / 2f;
-		float minX = hullLength / 2f;
-		for (int i = 0; i < sideOutline.Length; i++) {
-			if (sideOutline[i].y < minY) {
-				minY = sideOutline[i].y;
-			}
-			if (sideOutline[i].x < minX) {
-				minX = sideOutline[i].x;
-			}
-		}
-
-		for (int i = 0; i < sideOutline.Length; i++) {
-			sideOutline[i] -= new Vector2(minX, minY);
-		}*/
-
-		sideArea = GetPolygonArea(sideOutline);
+		totalSideSurfaceArea *= 2.0f;
+		totalSidePlanarArea = GetPolygonArea(sideOutline);
 		
-
-		if (sideArea == 0) {
-			sideCentroid = Vector2.zero;
+		if (totalSidePlanarArea == 0) {
+			totalSideCentroid = Vector2.zero;
 		} else {
-			sideCentroid = GetPolygonCentroid(sideOutline, sideArea);
+			totalSideCentroid = GetPolygonCentroid(sideOutline, totalSidePlanarArea);
 		}
-
-		//sideCentroid += new Vector2(minX, minY);
-
-		return sideArea;
 	}
 
 	public static float ErrorSquared(Vector2[] points, float m, float b) {
@@ -1858,7 +1859,21 @@ public class BuoyantHull : MonoBehaviour
 		Debug.DrawLine(points[points.Length - 1], points[0], color, 0, obscure);
 	}
 
-	private void OnDestroy() {
+	public float GetRectangleArea3D(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3) {
+		// Form the two adjacent side vectors originating from P0
+		Vector3 side1 = p1 - p0;
+		Vector3 side2 = p3 - p0;
+
+		// Calculate the cross product of these two vectors
+		Vector3 crossProduct = Vector3.Cross(side1, side2);
+
+		// The magnitude of the cross product is the area of the parallelogram
+		float area = crossProduct.magnitude;
+
+		return area;
+	}
+
+		private void OnDestroy() {
 		waterSurfaceHeightSearch.Destroy();
 	}
 }
