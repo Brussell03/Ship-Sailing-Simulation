@@ -64,7 +64,6 @@ public class ClothDispatcher : MonoBehaviour
 	ComputeBuffer stepVelocityBuffer;
 	ComputeBuffer gravityVectorBuffer;
 	ComputeBuffer windVectorBuffer;
-	ComputeBuffer startIndicesBuffer;
 	ComputeBuffer substepsBuffer;
 	ComputeBuffer stretchingAlphaBuffer;
 	ComputeBuffer bendingAlphaBuffer;
@@ -91,6 +90,8 @@ public class ClothDispatcher : MonoBehaviour
 	ComputeBuffer connectedVertsBuffer;
 	ComputeBuffer textureUVBuffer;
 	ComputeBuffer solveBendingBuffer;
+	ComputeBuffer oneSidedWindBuffer;
+	ComputeBuffer clothIndicesBuffer;
 	#endregion
 
 	#region Native Arrays
@@ -107,7 +108,6 @@ public class ClothDispatcher : MonoBehaviour
 	NativeArray<int> numVertsPerSubstepNative;
 	NativeArray<int> sortedClothIndicesNative;
 	NativeArray<Vector3> normalsNative;
-	NativeArray<Vector3> normalsInverseNative;
 	NativeArray<int> trianglesNative;
 	NativeArray<AdjacentTriangleIndices> vertexToTrianglesNative;
 	NativeArray<Vector3> triangleNormalsNative;
@@ -134,6 +134,8 @@ public class ClothDispatcher : MonoBehaviour
 	NativeArray<int> connectedVertsNative;
 	NativeArray<Vector2> textureUVNative;
 	NativeArray<int> solveBendingNative;
+	NativeArray<int> oneSidedWindNative;
+	NativeArray<int> clothIndicesNative;
 	#endregion
 
 	List<List<float>> d0 = new List<List<float>>();
@@ -182,7 +184,7 @@ public class ClothDispatcher : MonoBehaviour
 	bool readbackComplete = false;
 
 	float dragCoeffPerp = 1.28f;
-	float dragCoeffShear = 0.4f;
+	float dragCoeffShear = 0.2f;
 
 	MaterialPropertyBlock[] matProps;
 	RenderParams rp;
@@ -225,29 +227,38 @@ public class ClothDispatcher : MonoBehaviour
 	}
 
 	[BurstCompile]
-	private struct InvertNormalsJob : IJobParallelFor {
-		[ReadOnly]
-		public NativeArray<Vector3> normalsIn;
-
-		[WriteOnly]
-		public NativeArray<Vector3> normalsOut;
+	private struct FillClothIndicesJob : IJobParallelFor {
+		[ReadOnly] public int numCloths;
+		[ReadOnly] public NativeArray<int> clothStartIndices;
+		[WriteOnly]	public NativeArray<int> clothIndices;
 
 		public void Execute(int index) {
-			normalsOut[index] = -normalsIn[index];
+			int clothIndex = 0;
+			if (numCloths > 1) {
+				for (int j = 1; j < numCloths; j++) {
+					if (index >= clothStartIndices[j]) {
+						clothIndex = j;
+					} else {
+						break;
+					}
+				}
+			}
+
+			clothIndices[index] = clothIndex;
 		}
 	}
 
 	[BurstCompile]
 	public struct TransformPointsJob : IJobParallelFor {
 		public NativeArray<Vector3> positions;
-		[ReadOnly] public NativeArray<int> clothStartIndex;
+		[ReadOnly] public NativeArray<int> clothStartIndices;
 		[ReadOnly] public NativeArray<float4x4> transformMatrices;
 
 		public void Execute(int index) {
 			int clothIndex = 0;
-			if (clothStartIndex.Length > 1) {
-				for (int j = 1; j < clothStartIndex.Length; j++) {
-					if (index >= clothStartIndex[j]) {
+			if (clothStartIndices.Length > 1) {
+				for (int j = 1; j < clothStartIndices.Length; j++) {
+					if (index >= clothStartIndices[j]) {
 						clothIndex = j;
 					} else {
 						break;
@@ -316,13 +327,13 @@ public class ClothDispatcher : MonoBehaviour
 					windVectorsNative[i] = applyWindNative[i] ? (gameManager.windDirection * ((1f - windChaos / 4f) + chaosMagnitude * windChaos) + (transform.up * verticalFactor + transform.right * horizontalFactor) * chaosMagnitude * windChaos * 0.5f) * windSpeedVar : Vector3.zero;
 					//windVectorsNative[i] = applyWindNative[i] ? (transform.forward * windSpeed) : Vector3.zero;
 
-					if (cloths[sortedClothIndicesNative[i]].oneSidedWind) {
+					/*if (cloths[sortedClothIndicesNative[i]].oneSidedWind) {
 						float windForwardComp = Vector3.Dot(cloths[sortedClothIndicesNative[i]].transform.forward, windVectorsNative[i]);
 						if (windForwardComp < 0) {
 							// Wind force is against the forward direction of the cloth
 							windVectorsNative[i] -= cloths[sortedClothIndicesNative[i]].transform.forward * windForwardComp;
 						}
-					}
+					}*/
 
 				} else {
 					windVectorsNative[i] = Vector3.zero;
@@ -417,7 +428,7 @@ public class ClothDispatcher : MonoBehaviour
 
 								TransformPointsJob transformJob = new TransformPointsJob {
 									positions = xNative,
-									clothStartIndex = activeVertexStartIndexNative,
+									clothStartIndices = activeVertexStartIndexNative,
 									transformMatrices = transformMaticesNative
 								};
 
@@ -467,13 +478,13 @@ public class ClothDispatcher : MonoBehaviour
 
 								normalsNative = normalsReadbackRequest.GetData<Vector3>();
 
-								InvertNormalsJob invertJob = new InvertNormalsJob {
+								/*InvertNormalsJob invertJob = new InvertNormalsJob {
 									normalsIn = normalsNative,
 									normalsOut = normalsInverseNative
 								};
 
 								JobHandle jobHandle = invertJob.Schedule(numSimulatedVerts, 64);
-								jobHandle.Complete();
+								jobHandle.Complete();*/
 
 								// Update positions for each cloth
 								for (int i = 0; i < numSimulatedCloths; i++) {
@@ -779,9 +790,6 @@ public class ClothDispatcher : MonoBehaviour
 
 	private async Task RunLODSolveAsync(CancellationToken cancellationToken) {
 		while (!cancellationToken.IsCancellationRequested) {
-			// --- Run your periodic action ---
-			SolveLODs();
-
 			// --- Wait for the specified interval ---
 			try {
 				// Task.Delay runs on a background thread by default.
@@ -794,6 +802,9 @@ public class ClothDispatcher : MonoBehaviour
 				Debug.LogError($"[AsyncTimer] An error occurred in periodic task: {ex.Message}");
 				break; // Exit loop on unexpected errors
 			}
+
+			// --- Run your periodic action ---
+			SolveLODs();
 		}
 		Debug.Log("[AsyncTimer] Periodic task stopped.");
 	}
@@ -1191,9 +1202,10 @@ public class ClothDispatcher : MonoBehaviour
 		connectedVertsNative = new NativeArray<int>(numConnectedVertices, Allocator.Temp);
 		textureUVNative = new NativeArray<Vector2>(numActiveVerts, Allocator.Temp);
 		solveBendingNative = new NativeArray<int>(numSimulatedCloths, Allocator.Temp);
+		oneSidedWindNative = new NativeArray<int>(numSimulatedCloths, Allocator.Temp);
+		clothIndicesNative = new NativeArray<int>(numSimulatedVerts, Allocator.TempJob);
 
 		pinnedVertNative = new NativeArray<Vector3>(numPinnedVertices, Allocator.Persistent);
-		normalsInverseNative = new NativeArray<Vector3>(numActiveVerts, Allocator.Persistent);
 		windVectorsNative = new NativeArray<Vector3>(numSimulatedCloths, Allocator.Persistent);
 		applyWindNative = new NativeArray<bool>(numSimulatedCloths, Allocator.Persistent);
 		numVertsPerSubstepNative = new NativeArray<int>(numSimulatedCloths, Allocator.Persistent);
@@ -1282,6 +1294,7 @@ public class ClothDispatcher : MonoBehaviour
 				maxVelocityNative[i] = 1 / stepTimeNative[i];
 				applyWindNative[i] = cloths[clothIndex].simulateWind;
 				solveBendingNative[i] = cloths[clothIndex].solveBending ? 1 : 0;
+				oneSidedWindNative[i] = cloths[clothIndex].oneSidedWind ? 1 : 0;
 
 				// Acceleration Due to Gravity, Acceleration
 				localGravityVectorsNative[i] = (gravityActive && cloths[clothIndex].simulateGravity) ? Physics.gravity : Vector3.zero;
@@ -1489,24 +1502,6 @@ public class ClothDispatcher : MonoBehaviour
 
 		textureUVBuffer = ComputeHelper.CreateStructuredBuffer<Vector2>(numActiveVerts);
 		textureUVBuffer.SetData(textureUVNative);
-
-		startIndicesBuffer = ComputeHelper.CreateStructuredBuffer<int>(numActiveCloths);
-		startIndicesBuffer.SetData(activeVertexStartIndexNative);
-		clothCompute.SetBuffer(updateVelocityKernel, "startIndex", startIndicesBuffer);
-		clothCompute.SetBuffer(predictPositionKernel, "startIndex", startIndicesBuffer);
-		clothCompute.SetBuffer(solveStretchingKernel1, "startIndex", startIndicesBuffer);
-		clothCompute.SetBuffer(solveStretchingKernel2, "startIndex", startIndicesBuffer);
-		clothCompute.SetBuffer(solveStretchingKernel3, "startIndex", startIndicesBuffer);
-		clothCompute.SetBuffer(solveStretchingKernel4, "startIndex", startIndicesBuffer);
-		clothCompute.SetBuffer(solveStretchingKernel5, "startIndex", startIndicesBuffer);
-		clothCompute.SetBuffer(solveStretchingKernel6, "startIndex", startIndicesBuffer);
-		clothCompute.SetBuffer(solveBendingKernel1, "startIndex", startIndicesBuffer);
-		clothCompute.SetBuffer(solveBendingKernel2, "startIndex", startIndicesBuffer);
-		clothCompute.SetBuffer(solveBendingKernel3, "startIndex", startIndicesBuffer);
-		clothCompute.SetBuffer(solveBendingKernel4, "startIndex", startIndicesBuffer);
-		clothCompute.SetBuffer(solveBendingKernel5, "startIndex", startIndicesBuffer);
-		clothCompute.SetBuffer(solveBendingKernel6, "startIndex", startIndicesBuffer);
-		clothCompute.SetBuffer(solveConnectedKernel, "startIndex", startIndicesBuffer);
 
 		substepsBuffer = ComputeHelper.CreateStructuredBuffer<int>(numActiveCloths);
 		substepsBuffer.SetData(substepsNative);
@@ -1726,6 +1721,10 @@ public class ClothDispatcher : MonoBehaviour
 		clothCompute.SetBuffer(solveBendingKernel5, "solveBending", solveBendingBuffer);
 		clothCompute.SetBuffer(solveBendingKernel6, "solveBending", solveBendingBuffer);
 
+		oneSidedWindBuffer = ComputeHelper.CreateStructuredBuffer<int>(numSimulatedCloths);
+		oneSidedWindBuffer.SetData(oneSidedWindNative);
+		clothCompute.SetBuffer(predictPositionKernel, "oneSidedWind", oneSidedWindBuffer);
+
 		NativeArray<float4x4> transformMaticesNative = new NativeArray<float4x4>(numActiveCloths, Allocator.TempJob);
 
 		for (int i = 0; i < numActiveCloths; i++) {
@@ -1735,12 +1734,23 @@ public class ClothDispatcher : MonoBehaviour
 
 		TransformPointsJob transformJob = new TransformPointsJob {
 			positions = xNative,
-			clothStartIndex = activeVertexStartIndexNative,
+			clothStartIndices = activeVertexStartIndexNative,
 			transformMatrices = transformMaticesNative
 		};
 
-		JobHandle jobHandle = transformJob.Schedule(numActiveVerts, 64);
-		jobHandle.Complete();
+		JobHandle transformJobHandle = transformJob.Schedule(numActiveVerts, 64);
+
+		FillClothIndicesJob clothIndicesJob = new FillClothIndicesJob {
+			numCloths = numSimulatedCloths,
+			clothStartIndices = activeVertexStartIndexNative,
+			clothIndices = clothIndicesNative
+		};
+
+		JobHandle clothIndicesJobHandle = clothIndicesJob.Schedule(numSimulatedVerts, 64);
+
+		transformJobHandle.Complete();
+		clothIndicesJobHandle.Complete();
+
 		transformMaticesNative.Dispose();
 
 		xBuffer = ComputeHelper.CreateStructuredBuffer<Vector3>(numActiveVerts);
@@ -1748,6 +1758,24 @@ public class ClothDispatcher : MonoBehaviour
 		clothCompute.SetBuffer(calculateTriangleNormalsKernel, "x", xBuffer);
 		clothCompute.SetBuffer(updateVelocityKernel, "x", xBuffer);
 		clothCompute.SetBuffer(predictPositionKernel, "x", xBuffer);
+
+		clothIndicesBuffer = ComputeHelper.CreateStructuredBuffer<int>(numSimulatedVerts);
+		clothIndicesBuffer.SetData(clothIndicesNative);
+		clothCompute.SetBuffer(updateVelocityKernel, "clothIDs", clothIndicesBuffer);
+		clothCompute.SetBuffer(predictPositionKernel, "clothIDs", clothIndicesBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel1, "clothIDs", clothIndicesBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel2, "clothIDs", clothIndicesBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel3, "clothIDs", clothIndicesBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel4, "clothIDs", clothIndicesBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel5, "clothIDs", clothIndicesBuffer);
+		clothCompute.SetBuffer(solveStretchingKernel6, "clothIDs", clothIndicesBuffer);
+		clothCompute.SetBuffer(solveBendingKernel1, "clothIDs", clothIndicesBuffer);
+		clothCompute.SetBuffer(solveBendingKernel2, "clothIDs", clothIndicesBuffer);
+		clothCompute.SetBuffer(solveBendingKernel3, "clothIDs", clothIndicesBuffer);
+		clothCompute.SetBuffer(solveBendingKernel4, "clothIDs", clothIndicesBuffer);
+		clothCompute.SetBuffer(solveBendingKernel5, "clothIDs", clothIndicesBuffer);
+		clothCompute.SetBuffer(solveBendingKernel6, "clothIDs", clothIndicesBuffer);
+		clothCompute.SetBuffer(solveConnectedKernel, "clothIDs", clothIndicesBuffer);
 
 		DisposeTempSimulationNatives();
 
@@ -2225,13 +2253,13 @@ public class ClothDispatcher : MonoBehaviour
 				normalsNative = new NativeArray<Vector3>(normals, Allocator.TempJob);
 
 				//normalsInverse = normals.Select(x => -x).ToArray();
-				InvertNormalsJob invertJob = new InvertNormalsJob {
+				/*InvertNormalsJob invertJob = new InvertNormalsJob {
 					normalsIn = normalsNative,
 					normalsOut = normalsInverseNative
 				};
 
 				JobHandle jobHandle = invertJob.Schedule(numSimulatedVerts, 64);
-				jobHandle.Complete();
+				jobHandle.Complete();*/
 
 				// Update positions for each cloth
 				for (int i = 0; i < numSimulatedCloths; i++) {
@@ -2302,16 +2330,17 @@ public class ClothDispatcher : MonoBehaviour
 		if (connectedVertsNative.IsCreated) connectedVertsNative.Dispose();
 		if (textureUVNative.IsCreated) textureUVNative.Dispose();
 		if (solveBendingNative.IsCreated) solveBendingNative.Dispose();
+		if (oneSidedWindNative.IsCreated) oneSidedWindNative.Dispose();
+		if (clothIndicesNative.IsCreated) clothIndicesNative.Dispose();
 	}
 
 	private void ReleaseSimulationBuffersAndNatives() {
-		if (normalsInverseNative.IsCreated) normalsInverseNative.Dispose();
 		if (applyWindNative.IsCreated) applyWindNative.Dispose();
 		if (numVertsPerSubstepNative.IsCreated) numVertsPerSubstepNative.Dispose();
 		if (windVectorsNative.IsCreated) windVectorsNative.Dispose();
 		if (pinnedVertNative.IsCreated) pinnedVertNative.Dispose();
 
-		ComputeHelper.Release(xBuffer, normalsBuffer, trianglesBuffer, uvBuffer, vBuffer, wBuffer, pBuffer, stepVelocityBuffer, gravityVectorBuffer, windVectorBuffer, startIndicesBuffer, substepsBuffer, stretchingAlphaBuffer, bendingAlphaBuffer, stepTimeBuffer, dampingBuffer, maxVelocityBuffer, vertexToTrianglesBuffer, triangleNormalsBuffer, dragFactorBuffer, pinnedVertBuffer, vertToPinnedBuffer, clothWindForceBuffer, connectedVertsBuffer, textureUVBuffer, solveBendingBuffer);
+		ComputeHelper.Release(xBuffer, normalsBuffer, trianglesBuffer, uvBuffer, vBuffer, wBuffer, pBuffer, stepVelocityBuffer, gravityVectorBuffer, windVectorBuffer, substepsBuffer, stretchingAlphaBuffer, bendingAlphaBuffer, stepTimeBuffer, dampingBuffer, maxVelocityBuffer, vertexToTrianglesBuffer, triangleNormalsBuffer, dragFactorBuffer, pinnedVertBuffer, vertToPinnedBuffer, clothWindForceBuffer, connectedVertsBuffer, textureUVBuffer, solveBendingBuffer, oneSidedWindBuffer, clothIndicesBuffer);
 		ComputeHelper.Release(stretchingIDsBuffers);
 		ComputeHelper.Release(d0Buffers);
 		ComputeHelper.Release(bendingIDsBuffers);

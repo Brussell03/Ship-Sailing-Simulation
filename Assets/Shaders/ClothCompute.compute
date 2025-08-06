@@ -42,7 +42,6 @@ StructuredBuffer<float> d0;
 StructuredBuffer<float> dihedral0;
 StructuredBuffer<float3> gravityVector;
 StructuredBuffer<float3> windVector;
-StructuredBuffer<uint> startIndex;
 StructuredBuffer<uint> substeps;
 StructuredBuffer<float> stretchingAlpha;
 StructuredBuffer<float> bendingAlpha;
@@ -55,6 +54,8 @@ StructuredBuffer<float> dragFactor; // 1/2 * density * Area
 StructuredBuffer<float3> pinnedVertPos;
 StructuredBuffer<int> vertToPinned;
 StructuredBuffer<uint> solveBending;
+StructuredBuffer<uint> oneSidedWind;
+StructuredBuffer<uint> clothIDs;
 uint globalSubstep;
 uint numCloths;
 uint numVertices;
@@ -63,35 +64,13 @@ uint numTriangles;
 float dragCoeffPerp; // Drag Coefficient for Flow Perpendicular to Plate
 float dragCoeffShear; // Drag Coefficient for Flow Tangential to Plate
 
-
-int GetClothIndex(uint3 id)
-{
-    uint clothIndex = 0;
-    if (numCloths > 1)
-    {
-        for (uint j = 1; j < numCloths; j++)
-        {
-            if (id.x >= startIndex[j])
-            {
-                clothIndex = j;
-            }
-            else
-            {
-                break;
-            }
-        }
-    }
-    
-    return clothIndex;
-}
-
 [numthreads(64, 1, 1)]
 void UpdateVelocity (uint3 id : SV_DispatchThreadID)
 {
     if (id.x >= numVertices)
         return;
     
-    uint clothIndex = GetClothIndex(id);
+    uint clothIndex = clothIDs[id.x];
     if (globalSubstep >= substeps[clothIndex])
         return;
     
@@ -112,7 +91,7 @@ void PredictPosition (uint3 id : SV_DispatchThreadID)
     if (id.x >= numVertices)
         return;
     
-    uint clothIndex = GetClothIndex(id);
+    uint clothIndex = clothIDs[id.x];
     if (globalSubstep >= substeps[clothIndex])
         return;
     
@@ -127,36 +106,90 @@ void PredictPosition (uint3 id : SV_DispatchThreadID)
         
         clothWindForce[clothIndex] = uint3(0, 0, 0);
     }
+    float3 totalWindForce = float3(0.0f, 0.0f, 0.0f);
     
-    float3 windForce = float3(0.0f, 0.0f, 0.0f);
+    float3 relativeWindVelocity = windVector[clothIndex] - (w[id.x] == 0 ? v[id.x] : (x[id.x] - stepVelocityAndPrevX[id.x]));
     
-    float3 adjWindVector = windVector[clothIndex] - (x[id.x] - stepVelocityAndPrevX[id.x]);
-    
-    if (w[id.x] != 0 && length(adjWindVector) != 0)
+    if (length(relativeWindVelocity) != 0)
     {
-        float3 windNormal = normalize(adjWindVector);
+        float3 windNormal = normalize(relativeWindVelocity);
     
         float3 vertexNormal = dot(windNormal, normals[id.x]) < 0 ? -normals[id.x] : normals[id.x];
-        float windSpeedNormal = dot(adjWindVector, vertexNormal);
+        float windSpeedNormal = dot(relativeWindVelocity, vertexNormal);
         
-        float3 vertexShearNormal = normalize(adjWindVector - windSpeedNormal * vertexNormal);
-        float windSpeedShear = dot(adjWindVector, vertexShearNormal);
+        float3 vertexShearNormal = normalize(relativeWindVelocity - windSpeedNormal * vertexNormal);
+        float windSpeedShear = dot(relativeWindVelocity, vertexShearNormal);
     
         float3 forceNormal = dragCoeffPerp * windSpeedNormal * windSpeedNormal * vertexNormal;
         float3 forceShear = dragCoeffShear * windSpeedShear * windSpeedShear * vertexShearNormal;
         
-        windForce = dragFactor[id.x] * (forceNormal + forceShear);
+        float3 windDragForce = dragFactor[id.x] * (forceNormal + forceShear);
         //windForce = dragFactor[id.x] * (forceNormal + forceShear);
+        
+        // Lift
+        float relativeWindSpeedSq = dot(relativeWindVelocity, relativeWindVelocity);
+        float3 windLiftForce = float3(0.0f, 0.0f, 0.0f);
+        
+        float3 liftAxis = normalize(cross(windNormal, vertexNormal));
+
+        if (length(liftAxis) > 1e-6f) // Ensure liftAxis is valid
+        {
+            float3 liftDirection = cross(liftAxis, windNormal);
+
+            float angleOfAttack = asin(dot(windNormal, vertexNormal));
+            
+            /*if (angleOfAttack < PI / 8.0f) {
+                
+                float liftCoeff = PI * 2.0f * sin(angleOfAttack);
+                windLiftForce = dragFactor[id.x] * liftCoeff * relativeWindSpeedSq * liftDirection;
+                
+            } else if (angleOfAttack < PI / 5.0f) {
+                
+                float liftCoeff = -40.0f * pow(angleOfAttack - PI / 8.0f, 2.0f) + PI * 2.0f * sin(PI / 8.0f);
+                windLiftForce = dragFactor[id.x] * liftCoeff * relativeWindSpeedSq * liftDirection;
+            }*/
+            
+            float liftCoeff = 0.0f;
+            if (angleOfAttack < 0.2617993878f)
+            {
+                liftCoeff = 0.4f * sin(6.0f * angleOfAttack);
+            }
+            else if (angleOfAttack < 0.3141592654f)
+            {
+                liftCoeff = 0.4f - 3.5014087f * (angleOfAttack - 0.3141592654f);
+            }
+            else if (angleOfAttack < 0.872664626f)
+            {
+                liftCoeff = 0.25f * sin(4.25f * angleOfAttack + 4.71238898f) + 0.275f;
+            }
+            else if (angleOfAttack < 1.570796327f)
+            {
+                liftCoeff = -0.696f * (angleOfAttack - 1.570796327f);
+            }
+            
+            windLiftForce = dragFactor[id.x] * liftCoeff * relativeWindSpeedSq * liftDirection;
+        }
+        
+        totalWindForce = windDragForce + windLiftForce;
         
         if (globalSubstep == substeps[clothIndex] - 1)
         {
-            InterlockedAdd(clothWindForce[clothIndex].x, (int) round(windForce.x * 10000.0f));
-            InterlockedAdd(clothWindForce[clothIndex].y, (int) round(windForce.y * 10000.0f));
-            InterlockedAdd(clothWindForce[clothIndex].z, (int) round(windForce.z * 10000.0f));
+            InterlockedAdd(clothWindForce[clothIndex].x, (int) round(totalWindForce.x * 10000.0f));
+            InterlockedAdd(clothWindForce[clothIndex].y, (int) round(totalWindForce.y * 10000.0f));
+            InterlockedAdd(clothWindForce[clothIndex].z, (int) round(totalWindForce.z * 10000.0f));
+        }
+        
+        if (oneSidedWind[clothIndex] == 1)
+        {
+            float windForwardComp = dot(normals[id.x], totalWindForce);
+            if (windForwardComp < 0)
+            {
+                totalWindForce -= normals[id.x] * windForwardComp;
+            }
         }
     }
     
-    v[id.x] += stepTime[clothIndex] * (gravityVector[clothIndex] * anchored + windForce * w[id.x]); // Applies gravity and wind
+    v[id.x] += stepTime[clothIndex] * (gravityVector[clothIndex] * anchored + totalWindForce * w[id.x]); // Applies gravity and wind
 
     float sqrMagnitude = dot(v[id.x], v[id.x]);
     if (sqrMagnitude > maxVelocity[clothIndex] * maxVelocity[clothIndex])
@@ -174,7 +207,7 @@ void SolveStretchingBatch1(uint3 id : SV_DispatchThreadID)
     
     uint id0 = stretchingIDs[id.x * 2];
     
-    uint clothIndex = GetClothIndex(id0);
+    uint clothIndex = clothIDs[id0];
     if (globalSubstep >= substeps[clothIndex])
         return;
     
@@ -197,8 +230,8 @@ void SolveStretchingBatch1(uint3 id : SV_DispatchThreadID)
 
         float C = len - d0[id.x];
         float s = -C / (wT + stretchingAlpha[clothIndex]);
-        if (C < 0)
-            s *= 0.2f; // Compressive Force
+        /*if (C < 0)
+            s *= 0.2f; // Compressive Force*/
 
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -215,7 +248,7 @@ void SolveStretchingBatch2(uint3 id : SV_DispatchThreadID)
     
     uint id0 = stretchingIDs[id.x * 2];
     
-    uint clothIndex = GetClothIndex(id0);
+    uint clothIndex = clothIDs[id0];
     if (globalSubstep >= substeps[clothIndex])
         return;
     
@@ -238,8 +271,8 @@ void SolveStretchingBatch2(uint3 id : SV_DispatchThreadID)
 
         float C = len - d0[id.x];
         float s = -C / (wT + stretchingAlpha[clothIndex]);
-        if (C < 0)
-            s *= 0.2f; // Compressive Force
+        /*if (C < 0)
+            s *= 0.2f; // Compressive Force*/
 
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -256,7 +289,7 @@ void SolveStretchingBatch3(uint3 id : SV_DispatchThreadID)
     
     uint id0 = stretchingIDs[id.x * 2];
     
-    uint clothIndex = GetClothIndex(id0);
+    uint clothIndex = clothIDs[id0];
     if (globalSubstep >= substeps[clothIndex])
         return;
     
@@ -279,8 +312,8 @@ void SolveStretchingBatch3(uint3 id : SV_DispatchThreadID)
 
         float C = len - d0[id.x];
         float s = -C / (wT + stretchingAlpha[clothIndex]);
-        if (C < 0)
-            s *= 0.2f; // Compressive Force
+        /*if (C < 0)
+            s *= 0.2f; // Compressive Force*/
 
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -297,7 +330,7 @@ void SolveStretchingBatch4(uint3 id : SV_DispatchThreadID)
     
     uint id0 = stretchingIDs[id.x * 2];
     
-    uint clothIndex = GetClothIndex(id0);
+    uint clothIndex = clothIDs[id0];
     if (globalSubstep >= substeps[clothIndex])
         return;
     
@@ -320,8 +353,8 @@ void SolveStretchingBatch4(uint3 id : SV_DispatchThreadID)
 
         float C = len - d0[id.x];
         float s = -C / (wT + stretchingAlpha[clothIndex]);
-        if (C < 0)
-            s *= 0.2f; // Compressive Force
+        /*if (C < 0)
+            s *= 0.2f; // Compressive Force*/
 
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -338,7 +371,7 @@ void SolveStretchingBatch5(uint3 id : SV_DispatchThreadID)
     
     uint id0 = stretchingIDs[id.x * 2];
     
-    uint clothIndex = GetClothIndex(id0);
+    uint clothIndex = clothIDs[id0];
     if (globalSubstep >= substeps[clothIndex])
         return;
     
@@ -361,8 +394,8 @@ void SolveStretchingBatch5(uint3 id : SV_DispatchThreadID)
 
         float C = len - d0[id.x];
         float s = -C / (wT + stretchingAlpha[clothIndex]);
-        if (C < 0)
-            s *= 0.2f; // Compressive Force
+        /*if (C < 0)
+            s *= 0.2f; // Compressive Force*/
 
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -379,7 +412,7 @@ void SolveStretchingBatch6(uint3 id : SV_DispatchThreadID)
     
     uint id0 = stretchingIDs[id.x * 2];
     
-    uint clothIndex = GetClothIndex(id0);
+    uint clothIndex = clothIDs[id0];
     if (globalSubstep >= substeps[clothIndex])
         return;
     
@@ -402,8 +435,8 @@ void SolveStretchingBatch6(uint3 id : SV_DispatchThreadID)
 
         float C = len - d0[id.x];
         float s = -C / (wT + stretchingAlpha[clothIndex]);
-        if (C < 0)
-            s *= 0.2f; // Compressive Force
+        /*if (C < 0)
+            s *= 0.2f; // Compressive Force*/
 
         float3 p0p1_norm = (sqrMagnitude > 0.0f) ? ((p0 - p1) / len) : float3(0.0f, 0.0f, 0.0f);
         p0 += p0p1_norm * s * w0;
@@ -420,7 +453,7 @@ void SolveBendingBatch1(uint3 id : SV_DispatchThreadID)
     
     uint id2 = bendingIDs[id.x * 2];
     
-    uint clothIndex = GetClothIndex(id2);
+    uint clothIndex = clothIDs[id2];
     if (globalSubstep >= substeps[clothIndex] || solveBending[clothIndex] == 0)
         return;
     
@@ -460,7 +493,7 @@ void SolveBendingBatch2(uint3 id : SV_DispatchThreadID)
     
     uint id2 = bendingIDs[id.x * 2];
     
-    uint clothIndex = GetClothIndex(id2);
+    uint clothIndex = clothIDs[id2];
     if (globalSubstep >= substeps[clothIndex] || solveBending[clothIndex] == 0)
         return;
     
@@ -500,7 +533,7 @@ void SolveBendingBatch3(uint3 id : SV_DispatchThreadID)
     
     uint id2 = bendingIDs[id.x * 2];
     
-    uint clothIndex = GetClothIndex(id2);
+    uint clothIndex = clothIDs[id2];
     if (globalSubstep >= substeps[clothIndex] || solveBending[clothIndex] == 0)
         return;
     
@@ -540,7 +573,7 @@ void SolveBendingBatch4(uint3 id : SV_DispatchThreadID)
     
     uint id2 = bendingIDs[id.x * 2];
     
-    uint clothIndex = GetClothIndex(id2);
+    uint clothIndex = clothIDs[id2];
     if (globalSubstep >= substeps[clothIndex] || solveBending[clothIndex] == 0)
         return;
     
@@ -580,7 +613,7 @@ void SolveBendingBatch5(uint3 id : SV_DispatchThreadID)
     
     uint id2 = bendingIDs[id.x * 2];
     
-    uint clothIndex = GetClothIndex(id2);
+    uint clothIndex = clothIDs[id2];
     if (globalSubstep >= substeps[clothIndex] || solveBending[clothIndex] == 0)
         return;
     
@@ -620,7 +653,7 @@ void SolveBendingBatch6(uint3 id : SV_DispatchThreadID)
     
     uint id2 = bendingIDs[id.x * 2];
     
-    uint clothIndex = GetClothIndex(id2);
+    uint clothIndex = clothIDs[id2];
     if (globalSubstep >= substeps[clothIndex] || solveBending[clothIndex] == 0)
         return;
     
@@ -661,8 +694,8 @@ void SolveConnected(uint3 id : SV_DispatchThreadID)
     uint id0 = connectedIDs[id.x * 2];
     uint id1 = connectedIDs[id.x * 2 + 1];
     
-    uint clothIndex0 = GetClothIndex(id0);
-    uint clothIndex1 = GetClothIndex(id1);
+    uint clothIndex0 = clothIDs[id0];
+    uint clothIndex1 = clothIDs[id1];
     
     float3 p0 = p[id0];
     float3 p1 = p[id1];
@@ -697,8 +730,8 @@ void CalculateTriangleNormals(uint3 id : SV_DispatchThreadID)
     uint id1 = triangles[id.x * 3 + 1];
     uint id2 = triangles[id.x * 3 + 2];
     
-    float3 e1 = x[id1] - x[id0];
-    float3 e2 = x[id2] - x[id0];
+    float3 e1 = x[id2] - x[id0];
+    float3 e2 = x[id1] - x[id0];
     triangleNormals[id.x] = normalize(cross(e2, e1));
 }
 

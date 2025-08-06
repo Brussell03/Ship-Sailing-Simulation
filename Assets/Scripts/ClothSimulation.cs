@@ -493,7 +493,7 @@ public class ClothSimulation : MonoBehaviour {
 		if (Application.isPlaying) {
 
 			for (int i = 0; i < LODs[activeLODIndex].pinIndices.Count; i++) {
-				x[LODs[activeLODIndex].pinIndices[i]] = transform.TransformPoint(pinnedVertices[LODs[activeLODIndex].pinListIndices[i]].vector);
+				x[LODs[activeLODIndex].pinIndices[i]] = pinnedVertices[LODs[activeLODIndex].pinListIndices[i]].vector;
 			}
 
 		} else {
@@ -735,8 +735,6 @@ public class ClothSimulation : MonoBehaviour {
 			}
 
 			InitConstraints(x);
-
-			transform.TransformPoints(x, x);
 		}
 	}
 
@@ -983,8 +981,6 @@ public class ClothSimulation : MonoBehaviour {
 			}
 
 			InitConstraints(x);
-
-			transform.TransformPoints(x, x);
 		}
 
 		rectIndToTriIndNative.Dispose();

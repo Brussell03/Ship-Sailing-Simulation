@@ -55,7 +55,7 @@ public class HullShape : ScriptableObject
 		return flippedPoints;
 	}
 
-	public Vector2[] GetMirroredHullPoints(Vector2[] points) {
+	public static Vector2[] GetMirroredHullPoints(Vector2[] points) {
 		Vector2[] flippedPoints = new Vector2[points.Length];
 
 		// Flipping about the y-axis

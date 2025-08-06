@@ -45,19 +45,20 @@ public class GameManager : MonoBehaviour
 
 				if (camera.m_FocusedObject != null) {
 					debugString += "\nTracking Object: " + camera.m_FocusedObject.name;
+
+					if (camera.m_FocusedShip != null) {
+						Vector3 vel = camera.m_FocusedShip.transform.InverseTransformVector(camera.m_FocusedShip.rb.velocity);
+						debugString += "\nForward Velocity: " + vel.z.ToString("F2");
+						debugString += "\nSide Velocity: " + vel.x.ToString("F2");
+						debugString += "\nTurn Rate: " + (camera.m_FocusedShip.rb.angularVelocity.y * Mathf.Rad2Deg).ToString("F2");
+						debugString += "\nTurn Radius: " + (vel.z / camera.m_FocusedShip.rb.angularVelocity.y).ToString("F2");
+
+						debugString += "\nRudder Angle: " + camera.m_FocusedShip.rudderAngle.ToString("F2");
+						debugString += "\nRigging Angle: " + camera.m_FocusedShip.riggingAngle.ToString("F2");
+						debugString += "\nSpanker Angle: " + camera.m_FocusedShip.spankerAngle.ToString("F2");
+					}
 				}
 
-				if (camera.m_FocusedShip != null) {
-					Vector3 vel = camera.m_FocusedShip.transform.InverseTransformVector(camera.m_FocusedShip.rb.velocity);
-					debugString += "\nForward Velocity: " + vel.z.ToString("F2");
-					debugString += "\nSide Velocity: " + vel.x.ToString("F2");
-					debugString += "\nTurn Rate: " + (camera.m_FocusedShip.rb.angularVelocity.y * Mathf.Rad2Deg).ToString("F2");
-					debugString += "\nTurn Radius: " + (vel.z / camera.m_FocusedShip.rb.angularVelocity.y).ToString("F2");
-
-					debugString += "\nRudder Angle: " + camera.m_FocusedShip.rudderAngle.ToString("F2");
-					debugString += "\nRigging Angle: " + camera.m_FocusedShip.riggingAngle.ToString("F2");
-					debugString += "\nSpanker Angle: " + camera.m_FocusedShip.spankerAngle.ToString("F2");
-				}
 			}
 
 			debugText.text = debugString.Trim();

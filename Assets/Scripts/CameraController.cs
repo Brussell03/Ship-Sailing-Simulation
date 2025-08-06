@@ -78,6 +78,12 @@ public class CameraController : MonoBehaviour {
 	{
 		RegisterInputs();
 
+		if (m_CameraMode == 0) {
+			m_FocusedObject = null;
+			m_FocusedShip = null;
+			m_CameraPivot = null;
+		}
+
 		if (m_FocusedObject != null ) {
 			m_CameraPivot = m_FocusedObject.transform.Find("CameraHolder");
 			transform.parent = m_CameraPivot;
@@ -264,11 +270,15 @@ public class CameraController : MonoBehaviour {
 					m_FocusedShip.RotateRudder(true);
 				} else if (Input.GetKey(KeyCode.D)) {
 					m_FocusedShip.RotateRudder(false);
-				} else if (Input.GetKey(KeyCode.Q)) {
+				}
+				
+				if (Input.GetKey(KeyCode.Q)) {
 					m_FocusedShip.RotateRigging(true);
 				} else if (Input.GetKey(KeyCode.E)) {
 					m_FocusedShip.RotateRigging(false);
-				} else if (Input.GetKey(KeyCode.Z)) {
+				}
+				
+				if (Input.GetKey(KeyCode.Z)) {
 					m_FocusedShip.RotateSpanker(true);
 				} else if (Input.GetKey(KeyCode.C)) {
 					m_FocusedShip.RotateSpanker(false);
